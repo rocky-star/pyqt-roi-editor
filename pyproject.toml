@@ -1,0 +1,17 @@
+[project]
+name = "pyqt-roi-editor"
+version = "0.1"
+description = "A simple ROI (region of interest) editor written in PySide6"
+readme = "README.rst"
+authors = [
+  { name = "Rocky☆Star", email = "rocky-star22@outlook.com" }
+]
+requires-python = ">= 3.12"
+dependencies = []
+
+[project.scripts]
+pyqt-roi-editor = "pyqt_roi_editor:main"
+
+[build-system]
+requires = [ "uv_build >= 0.12.17, < 0.13.0" ]
+build-backend = "uv_build"
