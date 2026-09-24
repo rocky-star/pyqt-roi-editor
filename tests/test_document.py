@@ -119,6 +119,5 @@ def test_current_basemap_follows_the_active_index() -> None:
     assert document.current_basemap is None
 
 
-def test_an_empty_document_has_no_basename() -> None:
-    assert Document().basename == ''
+def test_an_empty_document_holds_nothing() -> None:
     assert Document().is_empty

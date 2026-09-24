@@ -1327,8 +1327,9 @@ class MainWindow(QMainWindow):
 
     def _save_document_as(self) -> None:
         """Ask for a file and write the document to it."""
-        suggestion = self._document.basename or (
-            self.__tr("Untitled") + '.rsroi')
+        # The file to suggest is the document by the name it is shown
+        # under, with the extension the format gives every file.
+        suggestion = self._document_name() + '.rsroi'
         path, _selected = QFileDialog.get_save_file_name(
             self, self.__tr("Save As"),
             str(Path(self._start_directory(self._document_directory))
