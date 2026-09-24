@@ -229,6 +229,19 @@ def grab_at(window: MainWindow, point: QPointF) -> QColor:
     return shown.pixel_color(view.map_from_scene(point))
 
 
+def column_pixels(
+        window: MainWindow, point: QPointF, color: QColor) -> int:
+    """Return how many pixels of `color` lie on the column of `point`."""
+    view = window.roi_view
+    spot = view.map_from_scene(point)
+    shown = view.viewport().grab().to_image()
+    return sum(
+        1
+        for offset in range(-20, 21)
+        if 0 <= spot.y() + offset < shown.height()
+        and shown.pixel_color(spot.x(), spot.y() + offset) == color)
+
+
 def test_the_editing_area_is_a_graphics_view(window) -> None:
     assert isinstance(window.central_widget(), ROIGraphicsView)
 
@@ -969,7 +982,10 @@ def test_a_vertex_is_selected_by_clicking_near_it(window) -> None:
     window.ui.action_add_line.trigger()
     window.roi_view.clicked.emit(QPointF(10, 10))
     window.roi_view.clicked.emit(QPointF(20, 20))
-    window.roi_view.clicked.emit(QPointF(21, 20))
+    # A few pixels from the handle, whatever the zoom happens to be.
+    handle = window.roi_view.map_from_scene(QPointF(20, 20))
+    window.roi_view.clicked.emit(
+        window.roi_view.map_to_scene(handle + QPoint(4, 0)))
     assert window._selected_vertex == 1
     assert window.ui.action_remove_vertex.enabled
 
@@ -1070,6 +1086,43 @@ def test_the_fill_of_a_selected_polygon_shows_on_the_canvas(window) -> None:
     plain = grab_at(window, QPointF(20, 20))
     window._select(window.document.shapes[0], None)
     assert grab_at(window, QPointF(20, 20)) != plain
+
+
+def test_an_outline_keeps_its_width_when_the_view_zooms(window) -> None:
+    """A zoom shows more of the image, not a thicker shape."""
+    draw_square(window)
+    window._select(None, None)
+    outline = QColor(0, 200, 255)
+    window._zoom_to_ratio(1.0)
+    plain = column_pixels(window, QPointF(20, 0), outline)
+    window._zoom_to_ratio(4.0)
+    assert plain > 0
+    assert abs(column_pixels(window, QPointF(20, 0), outline) - plain) <= 1
+
+
+def test_a_handle_keeps_its_size_when_the_view_zooms(window) -> None:
+    """A handle is drawn the size of what the pointer aims at."""
+    draw_square(window)
+    window._select(window.document.shapes[0], 0)
+    white = QColor(255, 255, 255)
+    window._zoom_to_ratio(1.0)
+    plain = column_pixels(window, QPointF(40, 0), white)
+    window._zoom_to_ratio(4.0)
+    assert plain > 0
+    assert abs(column_pixels(window, QPointF(40, 0), white) - plain) <= 1
+
+
+def test_a_press_has_to_land_near_a_handle_on_the_screen(window) -> None:
+    """The distance a press may miss a handle by is on-screen too."""
+    draw_square(window)
+    window._zoom_to_ratio(4.0)
+    view = window.roi_view
+    handle = view.map_from_scene(QPointF(40, 0))
+    window.roi_view.clicked.emit(view.map_to_scene(handle + QPoint(-12, 0)))
+    assert window._selected_vertex is None
+    assert window._selected_shape is window.document.shapes[0]
+    window.roi_view.clicked.emit(view.map_to_scene(handle + QPoint(-3, 0)))
+    assert window._selected_vertex == 1
 
 
 def test_a_press_turns_into_a_drag_of_the_selected_vertex(window) -> None:

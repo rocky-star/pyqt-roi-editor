@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
     QGraphicsEllipseItem,
+    QGraphicsItem,
     QGraphicsPathItem,
     QGraphicsPixmapItem,
     QGraphicsScene,
@@ -79,6 +80,9 @@ APPLICATION_NAME = 'ROI Editor'
 
 _ROI_PATTERNS = '*.rsroi'
 _IMAGE_PATTERNS = '*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.webp'
+# The drawing keeps the size it has on the screen, so a handle is as
+# big and an outline as thick at every zoom; both of these are pixels
+# of the view rather than coordinates of the basemap.
 _HANDLE_RADIUS = 4.0
 _SELECTION_TOLERANCE = 6.0
 _THUMBNAIL_SIZE = 48
@@ -104,10 +108,22 @@ class EditMode(enum.Enum):
     ADD_VERTEX = 'add_vertex'
 
 
-def _nearest_vertex(shape: Shape, point: QPointF) -> int | None:
-    """Return the vertex of `shape` closest to `point`, if near enough."""
+def _nearest_vertex(
+        shape: Shape, point: QPointF, tolerance: float) -> int | None:
+    """Return the vertex of `shape` closest to `point`, if near enough.
+
+    Parameters
+    ----------
+    shape : Shape
+        The shape whose vertices are looked at.
+    point : QPointF
+        The position to measure from, in scene coordinates.
+    tolerance : float
+        How far `point` may lie from a vertex and still count as
+        being on it, in scene coordinates.
+    """
     best: int | None = None
-    best_distance = _SELECTION_TOLERANCE
+    best_distance = tolerance
     for index, vertex in enumerate(shape.vertices):
         distance = math.hypot(vertex.x() - point.x(), vertex.y() - point.y())
         if distance <= best_distance:
@@ -436,7 +452,9 @@ class MainWindow(QMainWindow):
         """Draw `shape`, highlighted when it is the selected one.
 
         A selected polygon is also filled, so that the area it closes
-        over is as visible as its outline.
+        over is as visible as its outline.  The outline is drawn at
+        its own width: a zoom is there to show more of the image, not
+        to draw the shapes any fatter.
         """
         path = QPainterPath()
         if shape.vertices:
@@ -446,25 +464,34 @@ class MainWindow(QMainWindow):
             if shape.closed:
                 path.close_subpath()
         item = self._scene.add_path(path)
-        item.set_pen(QPen(
+        pen = QPen(
             _SELECTION_COLOR if selected else QColor(0, 200, 255),
-            3.0 if selected else 2.0))
+            3.0 if selected else 2.0)
+        pen.set_cosmetic(True)
+        item.set_pen(pen)
         if selected and shape.closed:
             item.set_brush(QBrush(_SELECTION_FILL))
         item.set_data(0, shape)
 
     def _add_handles(self, shape: Shape) -> None:
-        """Draw a handle on every vertex of the selected shape."""
+        """Draw a handle on every vertex of the selected shape.
+
+        A handle is centred on its vertex and drawn with the view's
+        transformation left out, so that it stays the size of the
+        pointer that grabs it however far the view is zoomed.
+        """
         for index, vertex in enumerate(shape.vertices):
             selected = index == self._selected_vertex
             handle = QGraphicsEllipseItem(
-                vertex.x() - _HANDLE_RADIUS,
-                vertex.y() - _HANDLE_RADIUS,
+                -_HANDLE_RADIUS, -_HANDLE_RADIUS,
                 _HANDLE_RADIUS * 2.0, _HANDLE_RADIUS * 2.0)
+            handle.set_flag(
+                QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
             handle.set_pen(QPen(QColor(0, 0, 0), 1.0))
             handle.set_brush(QBrush(
                 QColor(255, 64, 64) if selected else QColor(255, 255, 255)))
             handle.set_accepted_mouse_buttons(Qt.MouseButton.NoButton)
+            handle.set_pos(vertex)
             handle.set_data(0, index)
             self._scene.add_item(handle)
 
@@ -513,11 +540,20 @@ class MainWindow(QMainWindow):
         finally:
             self._syncing = False
 
+    def _grab_tolerance(self) -> float:
+        """Return the scene distance a press may miss a handle by.
+
+        The handle the press aims at keeps its size on the screen, so
+        the distance it may be missed by is an on-screen distance as
+        well, and the zoom is what turns it into basemap pixels.
+        """
+        return _SELECTION_TOLERANCE / max(self._zoom_ratio, 0.001)
+
     def _select_at(self, point: QPointF) -> None:
         """Select the handle, shape or nothing under `point`."""
         shape = self._selected_shape
         if shape is not None:
-            index = _nearest_vertex(shape, point)
+            index = _nearest_vertex(shape, point, self._grab_tolerance())
             if index is not None:
                 self._select(shape, index)
                 return
