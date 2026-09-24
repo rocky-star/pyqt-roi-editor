@@ -563,12 +563,27 @@ def test_a_basemap_is_loaded_through_the_file_dialog(
         QFileDialog, 'get_open_file_name',
         staticmethod(lambda *args, **kwargs: (str(path), '')))
     blank_window.ui.action_add_basemap.trigger()
+    # A basemap is named after the image file, extension and all.
     assert [basemap.name for basemap in blank_window.document.basemaps] == [
-        "map"]
+        "map.png"]
     assert blank_window.document.active_basemap == 0
     assert blank_window._scene.scene_rect.width() == 20.0
-    assert blank_window.basemaps_view.model().item(0).text() == "map"
+    assert blank_window.basemaps_view.model().item(0).text() == "map.png"
     assert blank_window.ui.action_add_line.enabled
+
+
+def test_a_second_basemap_of_one_name_is_counted_before_its_extension(
+        blank_window, monkeypatch, tmp_path) -> None:
+    image = QImage(20, 10, QImage.Format.Format_RGB32)
+    path = tmp_path / 'map.png'
+    assert image.save(str(path), 'PNG')
+    monkeypatch.setattr(
+        QFileDialog, 'get_open_file_name',
+        staticmethod(lambda *args, **kwargs: (str(path), '')))
+    blank_window.ui.action_add_basemap.trigger()
+    blank_window.ui.action_add_basemap.trigger()
+    assert [basemap.name for basemap in blank_window.document.basemaps] == [
+        "map.png", "map 2.png"]
 
 
 def test_a_file_dialog_starts_in_the_documents_folder(

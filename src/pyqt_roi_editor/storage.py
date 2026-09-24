@@ -1,12 +1,18 @@
 """Read and write ``.rsroi`` documents.
 
-A document is a ZIP archive holding one JSON entry, `data.json`, and
-one image entry per basemap under `basemaps/`.  Nothing is ever
-extracted to disk, so a hostile archive cannot write outside itself.
+A document is a ZIP archive holding one JSON entry, `manifest.json`,
+and one image entry per basemap under `basemaps/`, named after the
+identifier of the basemap it holds.  Nothing is ever extracted to
+disk, so a hostile archive cannot write outside itself.
+
+The manifest also frames the shapes: `canvas` is the area they are
+placed in and `active_basemap_id` names the image that is shown.  The
+editor keeps every image at the origin of the shape coordinates and
+has no frame of its own, so it writes both from the image it shows,
+and reads a canvas as no more than a note.
 """
 
-__all__ = ['FORMAT_NAME', 'FORMAT_VERSION', 'StorageError',
-           'load_document', 'save_document']
+__all__ = ['FORMAT_VERSION', 'StorageError', 'load_document', 'save_document']
 
 import json
 import zipfile
@@ -21,12 +27,36 @@ from pyqt_roi_editor.document import Basemap, Document, Shape, ShapeKind
 
 from __feature__ import snake_case, true_property  # pyright: ignore[reportUnusedImport]
 
-FORMAT_NAME = 'rsroi'
 FORMAT_VERSION = 1
-DATA_ENTRY = 'data.json'
+MANIFEST_ENTRY = 'manifest.json'
 BASEMAP_DIRECTORY = 'basemaps'
 
-_EXTENSIONS = {'JPEG': 'jpg', 'JPG': 'jpg', 'TIFF': 'tif'}
+# The document format names a shape by its type, and knows an older
+# name for a line.
+_SHAPE_KINDS = {
+    'line': ShapeKind.LINE,
+    'polyline': ShapeKind.LINE,
+    'polygon': ShapeKind.POLYGON,
+}
+
+# The format leaves the image format to the extension of the entry.
+_IMAGE_FORMATS = {
+    'jpg': 'JPEG',
+    'jpeg': 'JPEG',
+    'png': 'PNG',
+    'bmp': 'BMP',
+    'tif': 'TIFF',
+    'tiff': 'TIFF',
+    'webp': 'WEBP',
+}
+
+_EXTENSIONS = {
+    'JPEG': 'jpg',
+    'PNG': 'png',
+    'BMP': 'bmp',
+    'TIFF': 'tif',
+    'WEBP': 'webp',
+}
 
 
 class StorageError(Exception):
@@ -51,31 +81,34 @@ def save_document(document: Document, path: Path) -> None:
     basemaps: list[Mapping[str, object]] = []
     try:
         with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as archive:
-            for index, basemap in enumerate(document.basemaps):
-                data = _image_to_bytes(basemap.image, basemap.image_format)
+            for basemap in document.basemaps:
+                data = basemap.image_data
+                if data is None:
+                    data = _image_to_bytes(
+                        basemap.image, basemap.image_format)
                 if data is None:
                     raise StorageError(
                         f"cannot encode basemap {basemap.name!r}")
                 entry = (
-                    f'{BASEMAP_DIRECTORY}/{index}'
+                    f'{BASEMAP_DIRECTORY}/{basemap.id}'
                     f'.{_extension(basemap.image_format)}')
                 archive.writestr(entry, data)
                 basemaps.append({
+                    'id': basemap.id,
                     'name': basemap.name,
                     'file': entry,
-                    'format': basemap.image_format,
                 })
-            payload: Mapping[str, object] = {
-                'format': FORMAT_NAME,
-                'version': FORMAT_VERSION,
-                'active_basemap': document.active_basemap,
+            manifest: Mapping[str, object] = {
+                'format_version': FORMAT_VERSION,
+                'canvas': _canvas(document),
+                'active_basemap_id': _active_basemap_id(document),
                 'basemaps': basemaps,
                 'shapes': [
                     _shape_payload(shape) for shape in document.shapes],
             }
             archive.writestr(
-                DATA_ENTRY,
-                json.dumps(payload, indent=2, ensure_ascii=False))
+                MANIFEST_ENTRY,
+                json.dumps(manifest, indent=2, ensure_ascii=False))
     except OSError as error:
         raise StorageError(str(error)) from error
 
@@ -100,73 +133,130 @@ def load_document(path: Path) -> Document:
     """
     try:
         with zipfile.ZipFile(path) as archive:
-            payload = _read_payload(archive)
+            manifest = _read_manifest(archive)
             basemaps = [
                 _read_basemap(archive, entry)
-                for entry in _array(payload, 'basemaps')]
+                for entry in _array(manifest, 'basemaps')]
             shapes = [
                 _read_shape(entry)
-                for entry in _array(payload, 'shapes')]
+                for entry in _array(manifest, 'shapes')]
     except (
             OSError, zipfile.BadZipFile, KeyError,
             TypeError, ValueError) as error:
         raise StorageError(str(error)) from error
+    _check_basemap_ids(basemaps)
     if shapes and not basemaps:
         # The vertices of a shape are pixels of an image, so a
         # document holding shapes holds the image they belong to.
         raise StorageError("shapes without a basemap to place them in")
-    active = _as_number(payload.get('active_basemap', -1))
-    active_index = int(active) if active is not None else -1
-    if not 0 <= active_index < len(basemaps):
-        active_index = -1
     return Document(
         basemaps=basemaps,
         shapes=shapes,
-        active_basemap=active_index,
+        active_basemap=_active_index(manifest, basemaps),
         path=path)
 
 
-def _read_payload(archive: zipfile.ZipFile) -> Mapping[str, object]:
+def _canvas(document: Document) -> Mapping[str, object]:
+    """Return the area the shapes of `document` are placed in.
+
+    The editor keeps every image at the origin of the shape
+    coordinates, so the area is the size of the image that is shown,
+    and nothing at all when no image is.
+    """
+    basemap = document.current_basemap
+    if basemap is None:
+        return {'width': 0, 'height': 0}
+    return {
+        'width': basemap.image.width(),
+        'height': basemap.image.height(),
+    }
+
+
+def _active_basemap_id(document: Document) -> str | None:
+    """Return the identifier of the image `document` shows."""
+    basemap = document.current_basemap
+    return None if basemap is None else basemap.id
+
+
+def _read_manifest(archive: zipfile.ZipFile) -> Mapping[str, object]:
     """Return the validated JSON object held by `archive`."""
-    text = archive.read(DATA_ENTRY).decode('utf-8')
+    try:
+        text = archive.read(MANIFEST_ENTRY).decode('utf-8')
+    except KeyError as error:
+        raise StorageError(
+            f"the archive holds no {MANIFEST_ENTRY}") from error
     data = cast('object', json.loads(text))
-    payload = _as_mapping(data, "the data entry")
-    if payload.get('format') != FORMAT_NAME:
-        raise StorageError("the data entry is not an rsroi document")
-    version = payload.get('version')
+    manifest = _as_mapping(data, "the manifest")
+    version = manifest.get('format_version')
     if not isinstance(version, int) or version > FORMAT_VERSION:
         raise StorageError(f"unsupported document version {version!r}")
-    return payload
+    return manifest
+
+
+def _active_index(
+        manifest: Mapping[str, object],
+        basemaps: Sequence[Basemap]) -> int:
+    """Return the index of the image the manifest shows.
+
+    An identifier that names no basemap leaves the first one shown:
+    the editor shows an image for as long as it holds one.
+    """
+    if not basemaps:
+        return -1
+    active = manifest.get('active_basemap_id')
+    for index, basemap in enumerate(basemaps):
+        if basemap.id == active:
+            return index
+    return 0
+
+
+def _check_basemap_ids(basemaps: Sequence[Basemap]) -> None:
+    """Refuse basemaps that would be written over one another."""
+    seen: set[str] = set()
+    for basemap in basemaps:
+        if basemap.id in seen:
+            raise StorageError(
+                f"two basemaps share the id {basemap.id!r}")
+        seen.add(basemap.id)
 
 
 def _read_basemap(archive: zipfile.ZipFile, entry: object) -> Basemap:
     """Return the basemap described by the JSON object `entry`."""
     mapping = _as_mapping(entry, "a basemap entry")
+    identifier = mapping.get('id')
     name = mapping.get('name')
     file_name = mapping.get('file')
-    image_format = mapping.get('format', 'PNG')
     if (
-            not isinstance(name, str)
-            or not isinstance(file_name, str)
-            or not isinstance(image_format, str)):
+            not _is_id(identifier)
+            or not isinstance(name, str)
+            or not isinstance(file_name, str)):
         raise StorageError(f"a basemap entry of {name!r} is malformed")
-    image = QImage.from_data(archive.read(file_name))
+    data = archive.read(file_name)
+    image = QImage.from_data(data)
     if image.is_null():
         raise StorageError(f"cannot decode basemap {name!r}")
-    return Basemap(name=name, image=image, image_format=image_format)
+    return Basemap(
+        name=name,
+        image=image,
+        image_format=_format_of(file_name),
+        image_data=data,
+        id=cast('str', identifier))
 
 
 def _read_shape(entry: object) -> Shape:
     """Return the shape described by the JSON object `entry`."""
     mapping = _as_mapping(entry, "a shape entry")
+    identifier = mapping.get('id')
     name = mapping.get('name')
-    kind = mapping.get('kind')
-    if not isinstance(name, str) or not isinstance(kind, str):
+    kind = mapping.get('type')
+    if (
+            not _is_id(identifier)
+            or not isinstance(name, str)
+            or not isinstance(kind, str)):
         raise StorageError(f"a shape entry of {name!r} is malformed")
-    try:
-        shape_kind = ShapeKind(kind)
-    except ValueError as error:
-        raise StorageError(f"unknown shape kind {kind!r}") from error
+    shape_kind = _SHAPE_KINDS.get(kind)
+    if shape_kind is None:
+        raise StorageError(f"unknown shape type {kind!r}")
     vertices = _read_vertices(mapping.get('vertices', []))
     if shape_kind is ShapeKind.LINE and len(vertices) > 2:
         # A line is a segment: it has the two ends and nothing else.
@@ -176,20 +266,19 @@ def _read_shape(entry: object) -> Shape:
         kind=shape_kind,
         vertices=vertices,
         allow_vertices_outside_basemap=bool(
-            mapping.get('allow_vertices_outside_basemap', False)))
+            mapping.get('allow_outside_vertices', False)),
+        id=cast('str', identifier))
 
 
 def _read_vertices(raw: object) -> list[QPointF]:
     """Return the vertices held by the JSON array `raw`."""
     vertices: list[QPointF] = []
-    for pair in _as_sequence(raw, "the vertices of a shape"):
-        values = _as_sequence(pair, "a vertex")
-        if len(values) != 2:
-            raise StorageError(f"invalid vertex {pair!r}")
-        x = _as_number(values[0])
-        y = _as_number(values[1])
+    for entry in _as_sequence(raw, "the vertices of a shape"):
+        point = _as_mapping(entry, "a vertex")
+        x = _as_number(point.get('x'))
+        y = _as_number(point.get('y'))
         if x is None or y is None:
-            raise StorageError(f"invalid vertex {pair!r}")
+            raise StorageError(f"invalid vertex {entry!r}")
         vertices.append(QPointF(x, y))
     return vertices
 
@@ -197,12 +286,12 @@ def _read_vertices(raw: object) -> list[QPointF]:
 def _shape_payload(shape: Shape) -> Mapping[str, object]:
     """Return the JSON object describing `shape`."""
     return {
+        'id': shape.id,
         'name': shape.name,
-        'kind': shape.kind.value,
-        'allow_vertices_outside_basemap':
-            shape.allow_vertices_outside_basemap,
+        'type': shape.kind.value,
+        'allow_outside_vertices': shape.allow_vertices_outside_basemap,
         'vertices': [
-            [_dump_number(vertex.x()), _dump_number(vertex.y())]
+            {'x': _dump_number(vertex.x()), 'y': _dump_number(vertex.y())}
             for vertex in shape.vertices],
     }
 
@@ -233,12 +322,23 @@ def _as_number(value: object) -> float | None:
     return float(value)
 
 
+def _is_id(value: object) -> bool:
+    """Return whether `value` names a basemap or a shape."""
+    return isinstance(value, str) and bool(value)
+
+
 def _dump_number(value: float) -> int | float:
     """Return `value` as an integer when it has no fractional part."""
     number = float(value)
     if number.is_integer():
         return int(number)
     return number
+
+
+def _format_of(file_name: str) -> str:
+    """Return the image format the extension of `file_name` names."""
+    suffix = Path(file_name).suffix.lstrip('.').lower()
+    return _IMAGE_FORMATS.get(suffix, 'PNG')
 
 
 def _extension(image_format: str) -> str:

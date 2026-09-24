@@ -803,7 +803,7 @@ class MainWindow(QMainWindow):
         suffix = Path(path).suffix.lstrip('.').upper()
         image_format = 'JPEG' if suffix == 'JPG' else (suffix or 'PNG')
         self._document.basemaps.append(Basemap(
-            name=self._unique_basemap_name(Path(path).stem),
+            name=self._unique_basemap_name(Path(path).name),
             image=image,
             image_format=image_format))
         self._document.active_basemap = len(self._document.basemaps) - 1
@@ -852,15 +852,22 @@ class MainWindow(QMainWindow):
         basemap.name = name.strip()
         self._refresh_all()
 
-    def _unique_basemap_name(self, base: str) -> str:
-        """Return a basemap name based on `base` that is free."""
+    def _unique_basemap_name(self, file_name: str) -> str:
+        """Return a basemap name based on `file_name` that is free.
+
+        The name is the name of the image file, as the format keeps
+        it; a second image of the same name is counted before its
+        extension, which stays last.
+        """
         taken = {basemap.name for basemap in self._document.basemaps}
-        if base not in taken:
-            return base
+        if file_name not in taken:
+            return file_name
+        stem = Path(file_name).stem
+        suffix = Path(file_name).suffix
         number = 2
-        while f'{base} {number}' in taken:
+        while f'{stem} {number}{suffix}' in taken:
             number += 1
-        return f'{base} {number}'
+        return f'{stem} {number}{suffix}'
 
     # Documents
 

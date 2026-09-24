@@ -9,6 +9,7 @@ __all__ = ['Basemap', 'Document', 'Shape', 'ShapeKind']
 
 import enum
 import math
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -23,6 +24,11 @@ class ShapeKind(enum.Enum):
 
     LINE = 'line'
     POLYGON = 'polygon'
+
+
+def _new_id() -> str:
+    """Return the identifier a new basemap or shape is given."""
+    return str(uuid.uuid4())
 
 
 def _segment_distance(
@@ -74,11 +80,21 @@ class Basemap:
         The image itself, at its native size.
     image_format : str
         The ``QImage`` format name the image is written back as.
+    image_data : bytes or None
+        The encoded image as it was read, which is written back
+        untouched; ``None`` for an image that has only ever lived in
+        memory, which is encoded from `image` instead.  Nothing in the
+        editor changes `image`, so the two cannot drift apart.
+    id : str
+        The identifier the document format knows the basemap by, and
+        the one the shown basemap is written as.
     """
 
     name: str
     image: QImage
     image_format: str = 'PNG'
+    image_data: bytes | None = None
+    id: str = field(default_factory=_new_id)
 
     @property
     def rect(self) -> QRectF:
@@ -119,12 +135,15 @@ class Shape:
     allow_vertices_outside_basemap : bool
         Whether vertices outside the basemap are accepted; typing such
         a coordinate turns this on by itself.
+    id : str
+        The identifier the document format knows the shape by.
     """
 
     name: str
     kind: ShapeKind = ShapeKind.LINE
     vertices: list[QPointF] = field(default_factory=list)
     allow_vertices_outside_basemap: bool = False
+    id: str = field(default_factory=_new_id)
 
     @property
     def closed(self) -> bool:
