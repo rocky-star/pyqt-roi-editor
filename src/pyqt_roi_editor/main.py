@@ -505,11 +505,17 @@ class MainWindow(QMainWindow):
             self._scene.add_item(handle)
 
     def _update_title(self) -> None:
-        """Show the file name and the application name."""
-        basename = self._document.basename or self.__tr("Untitled")
+        """Show the document and the application in the title bar.
+
+        The name of the file is shown without the extension the
+        format gives it, which every document of the editor carries
+        and which the title has no room to spare for.
+        """
+        path = self._document.path
+        name = path.stem if path is not None else self.__tr("Untitled")
         self.window_title = qformat(
             self.__tr("%1 - %2"),
-            [basename, QCoreApplication.application_name])
+            [name, QCoreApplication.application_name])
 
     def _update_action_states(self) -> None:
         """Enable each action whose target currently exists."""

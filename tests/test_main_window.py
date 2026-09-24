@@ -583,7 +583,10 @@ def test_the_title_names_the_file_and_the_application(window) -> None:
 
 def test_the_title_follows_a_saved_file(window, tmp_path) -> None:
     assert window.save_path(tmp_path / 'doc.rsroi')
-    assert window.window_title == "doc.rsroi - ROI Editor"
+    # The extension is the one every document of the format carries.
+    assert window.window_title == "doc - ROI Editor"
+    assert window.save_path(tmp_path / 'plot.v2.rsroi')
+    assert window.window_title == "plot.v2 - ROI Editor"
 
 
 def test_the_about_action_is_named_after_the_application(window) -> None:

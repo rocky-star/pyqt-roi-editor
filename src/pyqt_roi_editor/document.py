@@ -236,7 +236,11 @@ class Document:
 
     @property
     def basename(self) -> str:
-        """Return the file name the title is built from, or ``''``."""
+        """Return the name of the file, extension and all, or ``''``.
+
+        The extension is the one the format gives every document, so
+        a file dialog is offered the name with it kept on.
+        """
         if self.path is None:
             return ''
         return self.path.name
