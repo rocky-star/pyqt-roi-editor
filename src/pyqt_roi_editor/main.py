@@ -21,6 +21,7 @@ from PySide6.QtCore import (
     QPoint,
     QPointF,
     QRectF,
+    QStandardPaths,
     Qt,
 )
 from PySide6.QtGui import (
@@ -125,6 +126,8 @@ class MainWindow(QMainWindow):
         self._selected_vertex: int | None = None
         self._basemap_index: int | None = None
         self._basemap_item: QGraphicsPixmapItem | None = None
+        self._document_directory: Path | None = None
+        self._image_directory: Path | None = None
         self._syncing = False
         self._watching = False
         self._build_editor_area()
@@ -741,12 +744,29 @@ class MainWindow(QMainWindow):
                 return name
             number += 1
 
+    # File dialogs
+
+    def _start_directory(self, remembered: Path | None) -> str:
+        """Return the folder a file dialog opens in by default.
+
+        `remembered` is the folder the last file of the dialog's own
+        kind was read from or written to; before there is one, the
+        Documents folder of the user is the starting point, or their
+        home folder where the system has no Documents folder.
+        """
+        if remembered is not None:
+            return str(remembered)
+        documents = QStandardPaths.writable_location(
+            QStandardPaths.StandardLocation.DocumentsLocation)
+        return documents or str(Path.home())
+
     # Basemaps
 
     def _add_basemap(self) -> None:
         """Load an image and show it as the active basemap."""
         path, _selected = QFileDialog.get_open_file_name(
-            self, self.__tr("Add Basemap"), '',
+            self, self.__tr("Add Basemap"),
+            self._start_directory(self._image_directory),
             qformat(self.__tr("Image Files (%1)"), [_IMAGE_PATTERNS]))
         if not path:
             return
@@ -756,6 +776,7 @@ class MainWindow(QMainWindow):
                 self, self.__tr("Add Basemap"),
                 qformat(self.__tr("Cannot load %1"), [Path(path).name]))
             return
+        self._image_directory = Path(path).parent
         suffix = Path(path).suffix.lstrip('.').upper()
         image_format = 'JPEG' if suffix == 'JPG' else (suffix or 'PNG')
         self._document.basemaps.append(Basemap(
@@ -818,7 +839,8 @@ class MainWindow(QMainWindow):
         if not self._maybe_discard():
             return
         path, _selected = QFileDialog.get_open_file_name(
-            self, self.__tr("Open Document"), '',
+            self, self.__tr("Open Document"),
+            self._start_directory(self._document_directory),
             qformat(self.__tr("ROI Files (%1)"), [_ROI_PATTERNS]))
         if not path:
             return
@@ -847,6 +869,7 @@ class MainWindow(QMainWindow):
                     self.__tr("Cannot open %1: %2"),
                     [path.name, str(error)]))
             return False
+        self._document_directory = path.parent
         self._adopt_document(document)
         return True
 
@@ -874,7 +897,9 @@ class MainWindow(QMainWindow):
         suggestion = self._document.basename or (
             self.__tr("Untitled") + '.rsroi')
         path, _selected = QFileDialog.get_save_file_name(
-            self, self.__tr("Save Document"), suggestion,
+            self, self.__tr("Save Document"),
+            str(Path(self._start_directory(self._document_directory))
+                / suggestion),
             qformat(self.__tr("ROI Files (%1)"), [_ROI_PATTERNS]))
         if not path:
             return
@@ -909,6 +934,7 @@ class MainWindow(QMainWindow):
                     self.__tr("Cannot save %1: %2"),
                     [path.name, str(error)]))
             return False
+        self._document_directory = path.parent
         self._document.path = path
         self._update_title()
         self.ui.statusbar.show_message(

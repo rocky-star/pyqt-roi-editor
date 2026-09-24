@@ -3,7 +3,14 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, Qt
+from PySide6.QtCore import (
+    QCoreApplication,
+    QEvent,
+    QPoint,
+    QPointF,
+    QStandardPaths,
+    Qt,
+)
 from PySide6.QtGui import QCursor, QGuiApplication, QImage, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
@@ -80,6 +87,37 @@ def sample_path(tmp_path: Path) -> Path:
                  active_basemap=0),
         path)
     return path
+
+
+def capture_dialogs(monkeypatch, *answers: str) -> list[str]:
+    """Record the folder every file dialog is asked to open in.
+
+    Each dialog answers with the next of `answers`, and cancels once
+    they run out.
+    """
+    asked: list[str] = []
+    remaining = list(answers)
+
+    def record(parent, caption, directory, filters):
+        asked.append(directory)
+        return (remaining.pop(0) if remaining else '', '')
+
+    monkeypatch.setattr(
+        QFileDialog, 'get_open_file_name', staticmethod(record))
+    monkeypatch.setattr(
+        QFileDialog, 'get_save_file_name', staticmethod(record))
+    return asked
+
+
+def documents_folder() -> str:
+    """Return where a document dialog is expected to start.
+
+    Qt names the Documents folder of the user, and a system that has
+    none leaves the home folder.
+    """
+    documents = QStandardPaths.writable_location(
+        QStandardPaths.StandardLocation.DocumentsLocation)
+    return documents or str(Path.home())
 
 
 def draw_polygon(window: MainWindow) -> None:
@@ -429,6 +467,71 @@ def test_a_basemap_is_loaded_through_the_file_dialog(
     assert window.document.active_basemap == 0
     assert window._scene.scene_rect.width() == 20.0
     assert window.basemaps_view.model().item(0).text() == "map"
+
+
+def test_a_file_dialog_starts_in_the_documents_folder(
+        window, monkeypatch) -> None:
+    asked = capture_dialogs(monkeypatch)
+    window.ui.action_open.trigger()
+    window.ui.action_add_basemap.trigger()
+    assert asked == [documents_folder()] * 2
+
+
+def test_a_file_dialog_starts_where_the_last_document_was_saved(
+        window, monkeypatch, tmp_path) -> None:
+    asked = capture_dialogs(monkeypatch)
+    assert window.save_path(tmp_path / 'doc.rsroi')
+    window.ui.action_open.trigger()
+    assert asked == [str(tmp_path)]
+
+
+def test_a_basemap_dialog_starts_where_the_last_one_came_from(
+        window, monkeypatch, tmp_path) -> None:
+    image = QImage(20, 10, QImage.Format.Format_RGB32)
+    path = tmp_path / 'map.png'
+    assert image.save(str(path), 'PNG')
+    asked = capture_dialogs(monkeypatch, str(path))
+    window.ui.action_add_basemap.trigger()
+    window.ui.action_add_basemap.trigger()
+    assert asked == [documents_folder(), str(tmp_path)]
+
+
+def test_a_basemap_leaves_the_document_dialogs_where_they_were(
+        window, monkeypatch, tmp_path) -> None:
+    image = QImage(20, 10, QImage.Format.Format_RGB32)
+    path = tmp_path / 'map.png'
+    assert image.save(str(path), 'PNG')
+    asked = capture_dialogs(monkeypatch, str(path))
+    window.ui.action_add_basemap.trigger()
+    window.ui.action_save_as.trigger()
+    assert asked == [
+        documents_folder(),
+        str(Path(documents_folder()) / 'Untitled.rsroi')]
+
+
+def test_a_document_leaves_the_basemap_dialog_where_it_was(
+        window, monkeypatch, tmp_path) -> None:
+    asked = capture_dialogs(monkeypatch)
+    assert window.save_path(tmp_path / 'doc.rsroi')
+    window.ui.action_add_basemap.trigger()
+    assert asked == [documents_folder()]
+
+
+def test_the_save_dialog_offers_the_name_in_the_start_folder(
+        window, monkeypatch) -> None:
+    asked = capture_dialogs(monkeypatch)
+    window.ui.action_save_as.trigger()
+    assert asked == [str(Path(documents_folder()) / 'Untitled.rsroi')]
+
+
+def test_the_documents_folder_falls_back_to_the_home_folder(
+        window, monkeypatch) -> None:
+    asked = capture_dialogs(monkeypatch)
+    monkeypatch.setattr(
+        QStandardPaths, 'writable_location',
+        staticmethod(lambda location: ''))
+    window.ui.action_open.trigger()
+    assert asked == [str(Path.home())]
 
 
 def test_a_basemap_is_removed_after_a_confirmation(
