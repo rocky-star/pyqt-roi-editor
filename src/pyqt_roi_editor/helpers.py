@@ -1,11 +1,43 @@
 """Small helpers shared by the rest of the application."""
 
-__all__ = ['qformat']
+__all__ = ['format_number', 'qformat']
 
 import re
 from collections.abc import Sequence
 
 _PLACEHOLDER = re.compile(r'%(\d+)')
+
+
+def format_number(value: float) -> str:
+    """Render a coordinate without a pointless fractional part.
+
+    A value with nothing after the decimal point is rendered as an
+    integer, so a coordinate typed as ``10`` reads back as ``10``
+    rather than ``10.0``; every other value keeps its own rendering.
+
+    Parameters
+    ----------
+    value : float
+        The coordinate to render.
+
+    Returns
+    -------
+    str
+        The rendered coordinate.
+
+    Examples
+    --------
+    >>> format_number(10.0)
+    '10'
+    >>> format_number(10.5)
+    '10.5'
+    >>> format_number(-0.5)
+    '-0.5'
+    """
+    number = float(value)
+    if number.is_integer():
+        return str(int(number))
+    return str(number)
 
 
 def qformat(

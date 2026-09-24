@@ -14,6 +14,11 @@ dependencies = [
 [project.scripts]
 pyqt-roi-editor = "pyqt_roi_editor.main:main"
 
+[tool.pyrefly.errors]
+missing-source = "ignore"
+missing-source-for-stubs = "ignore"
+bad-override-mutable-attribute = "error"
+
 [build-system]
 requires = [ "uv_build >= 0.12.17, < 0.13.0" ]
 build-backend = "uv_build"
@@ -23,7 +28,13 @@ files = [
   # Python modules
   "src/pyqt_roi_editor/__init__.py",
   "src/pyqt_roi_editor/main.py",
+  "src/pyqt_roi_editor/document.py",
+  "src/pyqt_roi_editor/storage.py",
   "src/pyqt_roi_editor/helpers.py",
+  "src/pyqt_roi_editor/roi_graphics_view.py",
+  "src/pyqt_roi_editor/coords_input.py",
+  "src/pyqt_roi_editor/shape_props_editor.py",
+  "src/pyqt_roi_editor/dump_shape_dialog.py",
   # UI files
   "src/pyqt_roi_editor/mainwindow.ui",
   "src/pyqt_roi_editor/shapepropseditor.ui",
@@ -31,12 +42,23 @@ files = [
   "src/pyqt_roi_editor/coordsinput.ui",
 ]
 
+[tool.pytest.ini_options]
+testpaths = [ "tests" ]
+
 [tool.pyright]
 include = [ "src" ]
+enableTypeIgnoreComments = true
 ignore = [ "**/ui_*.py" ]
 reportMissingModuleSource = "none"
+reportUnusedCallResult = "none"
+reportIgnoreCommentWithoutRule = "none"
 reportIncompatibleUnannotatedOverride = "error"
 reportUnannotatedClassAttribute = "none"
+
+[tool.pyrefly]
+project-includes = [ "src" ]
+search-path = [ "typings" ]
+infer-with-first-use = false
 
 [tool.ruff.lint.isort]
 section-order = [
@@ -50,3 +72,11 @@ section-order = [
 
 [tool.ruff.lint.isort.sections]
 pyside-feature = [ "__feature__" ]
+
+[tool.ruff.lint.pyflakes]
+allowed-unused-imports = [ "__feature__" ]
+
+[dependency-groups]
+dev = [
+  "pytest>=9.1.1",
+]
