@@ -83,6 +83,11 @@ _HANDLE_RADIUS = 4.0
 _SELECTION_TOLERANCE = 6.0
 _THUMBNAIL_SIZE = 48
 _HINT_TIMEOUT = 5000
+# The colour of a selected shape, and the wash filling the inside of
+# a selected polygon, which is what tells the two kinds apart at a
+# glance.
+_SELECTION_COLOR = QColor(255, 200, 0)
+_SELECTION_FILL = QColor(255, 200, 0, 64)
 # The keys that start a typed coordinate, and so open the palette.
 _COORDINATE_KEYS = '0123456789-'
 
@@ -107,6 +112,37 @@ def _nearest_vertex(shape: Shape, point: QPointF) -> int | None:
     return best
 
 
+def _snapped(point: QPointF) -> QPointF:
+    """Return `point` rounded to the pixel a vertex names.
+
+    The coordinates of a document are whole pixels of the basemap.
+    The view turns a position into scene coordinates at whatever zoom
+    is in force, so one the pointer gives arrives with a fraction of
+    its own; rounding it is what keeps the pixels whole, and a drag
+    moves on that grid too.  A typed coordinate needs no rounding:
+    the palette takes whole numbers only.
+    """
+    return QPointF(round(point.x()), round(point.y()))
+
+
+def _step_between(values: list[float], limit: float) -> float:
+    """Return the step bringing `values` within ``0 <= value <= limit``.
+
+    The step is one number for the whole set, so that a shape stopped
+    at the edge of its basemap keeps its form instead of being
+    squashed against the edge.  A set that is already inside is left
+    where it is, and one too large for the space sits against the
+    lower edge.
+    """
+    low = min(values)
+    if low < 0.0:
+        return -low
+    high = max(values)
+    if high > limit:
+        return limit - high
+    return 0.0
+
+
 def _thumbnail(image: QImage) -> QPixmap:
     """Return a small pixmap of `image` for the basemap list."""
     if image.width() > _THUMBNAIL_SIZE or image.height() > _THUMBNAIL_SIZE:
@@ -129,6 +165,8 @@ class MainWindow(QMainWindow):
         self._mode = EditMode.NONE
         self._selected_shape: Shape | None = None
         self._selected_vertex: int | None = None
+        self._drag_origin: QPointF | None = None
+        self._drag_base: list[QPointF] | None = None
         self._basemap_index: int | None = None
         self._basemap_item: QGraphicsPixmapItem | None = None
         self._document_directory: Path | None = None
@@ -213,6 +251,8 @@ class MainWindow(QMainWindow):
     def _connect_signals(self) -> None:
         """Connect the views, the palette and every menu action."""
         self.roi_view.clicked.connect(self._on_view_clicked)
+        self.roi_view.dragged.connect(self._on_view_dragged)
+        self.roi_view.drag_finished.connect(self._on_view_drag_finished)
         self.roi_view.finish_requested.connect(self._finish_shape)
         self.coords_input.accepted.connect(self._on_coords_accepted)
         self.coords_input.rejected.connect(self._cancel_mode)
@@ -269,6 +309,25 @@ class MainWindow(QMainWindow):
             self._apply_tree_selection()
             self._refresh_scene()
             self._update_title()
+            self._update_action_states()
+        finally:
+            self._syncing = False
+
+    def _refresh_shapes(self) -> None:
+        """Rebuild what only the shapes decide.
+
+        Moving a shape leaves the images and the title as they were,
+        which matters because a drag does this on every step of the
+        pointer.
+        """
+        if self._syncing:
+            return
+        self._syncing = True
+        try:
+            self._rebuild_shapes_model()
+            self.shapes_view.expand_all()
+            self._apply_tree_selection()
+            self._refresh_scene()
             self._update_action_states()
         finally:
             self._syncing = False
@@ -370,7 +429,11 @@ class MainWindow(QMainWindow):
         self._reapply_zoom()
 
     def _add_shape_item(self, shape: Shape, selected: bool) -> None:
-        """Draw `shape`, highlighted when it is the selected one."""
+        """Draw `shape`, highlighted when it is the selected one.
+
+        A selected polygon is also filled, so that the area it closes
+        over is as visible as its outline.
+        """
         path = QPainterPath()
         if shape.vertices:
             path.move_to(shape.vertices[0])
@@ -380,8 +443,10 @@ class MainWindow(QMainWindow):
                 path.close_subpath()
         item = self._scene.add_path(path)
         item.set_pen(QPen(
-            QColor(255, 200, 0) if selected else QColor(0, 200, 255),
+            _SELECTION_COLOR if selected else QColor(0, 200, 255),
             3.0 if selected else 2.0))
+        if selected and shape.closed:
+            item.set_brush(QBrush(_SELECTION_FILL))
         item.set_data(0, shape)
 
     def _add_handles(self, shape: Shape) -> None:
@@ -672,6 +737,8 @@ class MainWindow(QMainWindow):
         """Switch to `mode` and show `hint`."""
         self._mode = mode
         self._watching = True
+        self._drag_origin = None
+        self._drag_base = None
         self.coords_input.reset()
         self.roi_view.cursor = Qt.CursorShape.CrossCursor
         self.roi_view.set_focus()
@@ -813,11 +880,99 @@ class MainWindow(QMainWindow):
         self._refresh_all()
 
     def _on_view_clicked(self, point: QPointF) -> None:
-        """Add a vertex, or select, depending on the mode."""
-        if self._mode is EditMode.NONE:
-            self._select_at(point)
-        else:
+        """Add a vertex, or select what the press landed on.
+
+        A press that selects is also where a drag begins, so what it
+        landed on is kept until the pointer is let go.
+        """
+        if self._mode is not EditMode.NONE:
             self._add_point(point)
+            return
+        self._select_at(point)
+        self._begin_drag(point)
+
+    def _begin_drag(self, point: QPointF) -> None:
+        """Remember the vertices a drag from `point` may move.
+
+        What the press selected decides what moves: a vertex handle
+        moves that vertex alone, and anything else moves the shape as
+        a whole.  The vertices are kept as they were at the press, so
+        that every step of the drag can be measured against them.
+        """
+        self._drag_origin = None
+        self._drag_base = None
+        shape = self._selected_shape
+        if shape is None:
+            return
+        index = self._selected_vertex
+        if index is not None and 0 <= index < len(shape.vertices):
+            self._drag_base = [shape.vertices[index]]
+        else:
+            self._drag_base = list(shape.vertices)
+        self._drag_origin = point
+
+    def _on_view_dragged(self, point: QPointF) -> None:
+        """Move what the press selected to where the pointer has got.
+
+        The step is measured from the press rather than added move by
+        move, so a drag that comes back to where it started puts the
+        shape back exactly, and it is rounded to whole pixels, so
+        dragging never leaves a vertex between two of them.
+        """
+        origin = self._drag_origin
+        base = self._drag_base
+        if origin is None or base is None or self._mode is not EditMode.NONE:
+            return
+        self._drag_selection(base, _snapped(point - origin))
+
+    def _drag_selection(
+            self, base: list[QPointF], offset: QPointF) -> None:
+        """Move the vertices of `base` by `offset`, within the basemap.
+
+        The whole shape takes one step, so that dragging it about
+        never changes its form; a single vertex follows the pointer on
+        its own.
+        """
+        shape = self._selected_shape
+        if shape is None:
+            return
+        moved = self._kept_inside(shape, [
+            QPointF(vertex.x() + offset.x(), vertex.y() + offset.y())
+            for vertex in base])
+        index = self._selected_vertex
+        if index is not None and 0 <= index < len(shape.vertices):
+            shape.vertices[index] = moved[0]
+        else:
+            shape.vertices = moved
+        self._refresh_shapes()
+
+    def _kept_inside(
+            self, shape: Shape, vertices: list[QPointF]) -> list[QPointF]:
+        """Return `vertices` as far as the basemap lets them go.
+
+        A shape that may hold vertices outside of the basemap keeps
+        them wherever the pointer puts them.  One that may not stops
+        at the edge: a shape dragged as a whole slides back along the
+        edge, and a vertex dragged on its own is held at the edge it
+        reaches.
+        """
+        basemap = self._document.current_basemap
+        if basemap is None or shape.allow_vertices_outside_basemap:
+            return vertices
+        step_x = _step_between(
+            [vertex.x() for vertex in vertices],
+            float(basemap.image.width() - 1))
+        step_y = _step_between(
+            [vertex.y() for vertex in vertices],
+            float(basemap.image.height() - 1))
+        return [
+            QPointF(vertex.x() + step_x, vertex.y() + step_y)
+            for vertex in vertices]
+
+    def _on_view_drag_finished(self) -> None:
+        """Stop moving the selection, the pointer having been let go."""
+        self._drag_origin = None
+        self._drag_base = None
 
     def _on_coords_accepted(self, point: QPointF) -> None:
         """Add the typed position while a mode is active."""
@@ -826,7 +981,13 @@ class MainWindow(QMainWindow):
         self._add_point(point)
 
     def _add_point(self, point: QPointF) -> None:
-        """Append or insert a vertex at `point`."""
+        """Append or insert a vertex at `point`, on the pixel grid.
+
+        A coordinate of the document is a whole pixel: one that was
+        typed arrives whole already, and one the pointer gives is
+        rounded to the nearest.
+        """
+        point = _snapped(point)
         if self._mode is EditMode.CREATE_SHAPE:
             draft = self._draft
             if draft is None:

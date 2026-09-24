@@ -12,13 +12,14 @@ from PySide6.QtCore import (
     QStandardPaths,
     Qt,
 )
-from PySide6.QtGui import QCursor, QGuiApplication, QImage, QKeyEvent
+from PySide6.QtGui import QColor, QCursor, QGuiApplication, QImage, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QDockWidget,
     QFileDialog,
+    QGraphicsPathItem,
     QListView,
     QMenu,
     QMessageBox,
@@ -192,6 +193,40 @@ def draw_polygon(window: MainWindow) -> None:
     for text in ('0, 0', '10, 0', '10, 10'):
         type_coords(window, text)
     window.roi_view.finish_requested.emit()
+
+
+def draw_square(window: MainWindow) -> None:
+    """Draw the square ``(0, 0) (40, 0) (40, 40) (0, 40)``.
+
+    The middle of the square is further from every corner of it than
+    a press has to be to grab a vertex, so a press there selects the
+    shape itself.
+    """
+    window.ui.action_add_polygon.trigger()
+    for text in ('0, 0', '40, 0', '40, 40', '0, 40'):
+        type_coords(window, text)
+    window.roi_view.finish_requested.emit()
+
+
+def vertices(window: MainWindow) -> list[tuple[float, float]]:
+    """Return the vertices of the first shape, as number pairs."""
+    return [
+        (vertex.x(), vertex.y())
+        for vertex in window.document.shapes[0].vertices]
+
+
+def shape_items(window: MainWindow) -> list[QGraphicsPathItem]:
+    """Return the items the scene draws the shapes with."""
+    return [
+        item for item in window._scene.items()
+        if isinstance(item, QGraphicsPathItem)]
+
+
+def grab_at(window: MainWindow, point: QPointF) -> QColor:
+    """Return the colour the editing area shows at the scene `point`."""
+    view = window.roi_view
+    shown = view.viewport().grab().to_image()
+    return shown.pixel_color(view.map_from_scene(point))
 
 
 def test_the_editing_area_is_a_graphics_view(window) -> None:
@@ -973,3 +1008,172 @@ def test_a_new_shape_gets_a_free_name(window) -> None:
             type_coords(window, text)
     assert [shape.name for shape in window.document.shapes] == [
         "Shape 1", "Shape 2"]
+
+
+def test_a_selected_polygon_is_filled_with_a_translucent_colour(
+        window) -> None:
+    draw_polygon(window)
+    item = shape_items(window)[0]
+    fill = item.brush().color()
+    assert item.brush().style() is not Qt.BrushStyle.NoBrush
+    # Translucent, so that the pixels it covers stay readable.
+    assert 0 < fill.alpha() < 255
+    assert fill.get_rgb()[:3] == item.pen().color().get_rgb()[:3]
+
+
+def test_an_unselected_polygon_is_left_unfilled(window) -> None:
+    draw_polygon(window)
+    window._select(None, None)
+    assert shape_items(window)[0].brush().style() is Qt.BrushStyle.NoBrush
+
+
+def test_a_selected_line_is_left_unfilled(window) -> None:
+    window.ui.action_add_line.trigger()
+    for text in ('10, 10', '20, 20'):
+        type_coords(window, text)
+    assert shape_items(window)[0].brush().style() is Qt.BrushStyle.NoBrush
+
+
+def test_the_fill_of_a_selected_polygon_shows_on_the_canvas(window) -> None:
+    draw_square(window)
+    window._select(None, None)
+    plain = grab_at(window, QPointF(20, 20))
+    window._select(window.document.shapes[0], None)
+    assert grab_at(window, QPointF(20, 20)) != plain
+
+
+def test_a_press_turns_into_a_drag_of_the_selected_vertex(window) -> None:
+    draw_square(window)
+    view = window.roi_view
+    start = view.map_from_scene(QPointF(40, 0))
+    QTest.mouse_press(view.viewport(), Qt.MouseButton.LeftButton, pos=start)
+    assert window._selected_vertex == 1
+    QTest.mouse_move(view.viewport(), start + QPoint(30, 30))
+    QTest.mouse_release(
+        view.viewport(), Qt.MouseButton.LeftButton, pos=start + QPoint(30, 30))
+    moved = vertices(window)[1]
+    assert moved != (40.0, 0.0)
+    assert vertices(window)[0] == (0.0, 0.0)
+
+
+def test_dragging_a_shape_moves_all_of_its_vertices(window) -> None:
+    draw_square(window)
+    window.roi_view.clicked.emit(QPointF(20, 20))
+    assert window._selected_shape is window.document.shapes[0]
+    assert window._selected_vertex is None
+    window.roi_view.dragged.emit(QPointF(25, 22))
+    window.roi_view.drag_finished.emit()
+    assert vertices(window) == [
+        (5.0, 2.0), (45.0, 2.0), (45.0, 42.0), (5.0, 42.0)]
+    # The tree follows the shape it lists.
+    assert window.shapes_view.model().item(0).child(0, 1).text() == "5"
+    assert window.shapes_view.model().item(0).child(0, 2).text() == "2"
+
+
+def test_dragging_a_vertex_moves_only_that_vertex(window) -> None:
+    draw_square(window)
+    window.roi_view.clicked.emit(QPointF(40, 0))
+    assert window._selected_vertex == 1
+    window.roi_view.dragged.emit(QPointF(45, 5))
+    window.roi_view.drag_finished.emit()
+    assert vertices(window) == [
+        (0.0, 0.0), (45.0, 5.0), (40.0, 40.0), (0.0, 40.0)]
+
+
+def test_a_drag_lands_on_whole_pixels(window) -> None:
+    draw_square(window)
+    window.roi_view.clicked.emit(QPointF(40, 0))
+    # Less than half a pixel is no move at all.
+    window.roi_view.dragged.emit(QPointF(40.3, 0.4))
+    assert vertices(window)[1] == (40.0, 0.0)
+    window.roi_view.dragged.emit(QPointF(43.4, 2.6))
+    window.roi_view.drag_finished.emit()
+    assert vertices(window)[1] == (43.0, 3.0)
+
+
+def test_a_drag_comes_back_with_the_pointer(window) -> None:
+    draw_square(window)
+    window.roi_view.clicked.emit(QPointF(40, 0))
+    window.roi_view.dragged.emit(QPointF(51, 13))
+    window.roi_view.dragged.emit(QPointF(40, 0))
+    window.roi_view.drag_finished.emit()
+    # Every move is measured from the press, so nothing is left over.
+    assert vertices(window)[1] == (40.0, 0.0)
+
+
+def test_a_move_after_the_pointer_is_let_go_moves_nothing(window) -> None:
+    draw_square(window)
+    window.roi_view.clicked.emit(QPointF(40, 0))
+    window.roi_view.drag_finished.emit()
+    window.roi_view.dragged.emit(QPointF(45, 5))
+    assert vertices(window)[1] == (40.0, 0.0)
+
+
+def test_dragging_empty_canvas_moves_nothing(window) -> None:
+    draw_square(window)
+    window.roi_view.clicked.emit(QPointF(80, 70))
+    window.roi_view.dragged.emit(QPointF(85, 75))
+    window.roi_view.drag_finished.emit()
+    assert window._selected_shape is None
+    assert vertices(window) == [
+        (0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)]
+
+
+def test_a_drag_while_drawing_leaves_the_draft_alone(window) -> None:
+    window.ui.action_add_polygon.trigger()
+    window.roi_view.clicked.emit(QPointF(10, 10))
+    draft = window._draft
+    assert draft is not None
+    window.roi_view.dragged.emit(QPointF(30, 30))
+    assert [(p.x(), p.y()) for p in draft.vertices] == [(10.0, 10.0)]
+
+
+def test_a_shape_stops_at_the_edge_of_the_basemap(window) -> None:
+    draw_square(window)
+    window.roi_view.clicked.emit(QPointF(20, 20))
+    window.roi_view.dragged.emit(QPointF(500, 500))
+    window.roi_view.drag_finished.emit()
+    # The square slides along the edge rather than leaving the image.
+    assert vertices(window) == [
+        (59.0, 39.0), (99.0, 39.0), (99.0, 79.0), (59.0, 79.0)]
+    assert not window.document.shapes[0].allow_vertices_outside_basemap
+
+
+def test_a_vertex_stops_at_the_edge_of_the_basemap(window) -> None:
+    draw_square(window)
+    window.roi_view.clicked.emit(QPointF(40, 0))
+    window.roi_view.dragged.emit(QPointF(-500, -500))
+    window.roi_view.drag_finished.emit()
+    assert vertices(window)[1] == (0.0, 0.0)
+    assert vertices(window)[2] == (40.0, 40.0)
+
+
+def test_a_shape_that_may_leave_the_basemap_does(window) -> None:
+    draw_square(window)
+    window.document.shapes[0].allow_vertices_outside_basemap = True
+    window.roi_view.clicked.emit(QPointF(20, 20))
+    window.roi_view.dragged.emit(QPointF(100, 100))
+    window.roi_view.drag_finished.emit()
+    assert vertices(window) == [
+        (80.0, 80.0), (120.0, 80.0), (120.0, 120.0), (80.0, 120.0)]
+
+
+def test_a_clicked_vertex_lands_on_a_pixel(window) -> None:
+    window.ui.action_add_line.trigger()
+    window.roi_view.clicked.emit(QPointF(10.4, 10.6))
+    window.roi_view.clicked.emit(QPointF(20.4, 20.6))
+    assert vertices(window) == [(10.0, 11.0), (20.0, 21.0)]
+
+
+def test_a_typed_coordinate_must_be_whole(window) -> None:
+    window.ui.action_add_line.trigger()
+    window.roi_view.clicked.emit(QPointF(10, 10))
+    type_coords(window, '10.5, 10')
+    # The text stays for the user to correct, and nothing is added.
+    assert window.coords_input.text == '10.5, 10'
+    draft = window._draft
+    assert draft is not None
+    assert [(p.x(), p.y()) for p in draft.vertices] == [(10.0, 10.0)]
+    window.coords_input.ui.coords_edit.text = '11, 10'
+    window.coords_input.ui.accept_button.click()
+    assert vertices(window) == [(10.0, 10.0), (11.0, 10.0)]

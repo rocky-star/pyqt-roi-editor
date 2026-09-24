@@ -61,13 +61,19 @@ def parse_coords(text: str) -> QPointF | None:
     return QPointF(x, y)
 
 
+def _is_whole(point: QPointF) -> bool:
+    """Return whether both parts of `point` are whole numbers."""
+    return point.x().is_integer() and point.y().is_integer()
+
+
 class CoordsInput(QWidget):
     """A small bar holding a position field and its two buttons.
 
     Signals
     -------
     accepted : QPointF
-        Emitted with the parsed position when the text is accepted.
+        Emitted with the parsed position when the text is accepted;
+        both parts of it are whole numbers.
     rejected
         Emitted when the palette is dismissed.
 
@@ -150,18 +156,29 @@ class CoordsInput(QWidget):
         popup holds the pointer while it is open, and the view answers
         clicks as usual once it is gone.  The next coordinate opens it
         again with its first key.
+
+        A coordinate of a document is a whole pixel of the basemap, so
+        a field holding anything else is left as it is, for the user
+        to correct, rather than rounded to a pixel of the editor's
+        choosing.
         """
         field = self.ui.coords_edit
         point = parse_coords(field.text)
         if point is None:
-            QToolTip.show_text(
-                field.map_to_global(QPoint(0, 0)),
-                self.__tr("Enter coordinates as 'x, y'"),
-                field)
-            field.select_all()
+            self._complain(self.__tr("Enter coordinates as 'x, y'"))
+            return
+        if not _is_whole(point):
+            self._complain(self.__tr("Coordinates must be whole numbers"))
             return
         self.reset()
         self.accepted.emit(point)
+
+    def _complain(self, message: str) -> None:
+        """Show `message` by the field, and leave it ready to edit."""
+        field = self.ui.coords_edit
+        QToolTip.show_text(
+            field.map_to_global(QPoint(0, 0)), message, field)
+        field.select_all()
 
     def _reject(self) -> None:
         """Emit the request to give up."""
