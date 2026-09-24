@@ -1,5 +1,6 @@
 """Tests for the main window, the editing area and the docks."""
 
+import importlib.metadata
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,7 @@ from pyqt_roi_editor.main import (
     APPLICATION_NAME,
     EditMode,
     MainWindow,
+    installed_version,
 )
 from pyqt_roi_editor.roi_graphics_view import ROIGraphicsView
 from pyqt_roi_editor.shape_props_editor import ShapePropsEditor
@@ -118,6 +120,17 @@ def documents_folder() -> str:
     documents = QStandardPaths.writable_location(
         QStandardPaths.StandardLocation.DocumentsLocation)
     return documents or str(Path.home())
+
+
+def capture_about(monkeypatch) -> list[str]:
+    """Record the text of every about box that is shown."""
+    shown: list[str] = []
+
+    def record(parent, title, text):
+        shown.append(text)
+
+    monkeypatch.setattr(QMessageBox, 'about', staticmethod(record))
+    return shown
 
 
 def draw_polygon(window: MainWindow) -> None:
@@ -273,6 +286,36 @@ def test_the_title_follows_a_saved_file(window, tmp_path) -> None:
 
 def test_the_about_action_is_named_after_the_application(window) -> None:
     assert window.ui.action_about.text == f"&About {APPLICATION_NAME}"
+
+
+def test_the_about_box_shows_the_application_version(
+        window, monkeypatch) -> None:
+    QCoreApplication.application_version = '3.2.1'
+    body = (
+        "<p>ROI Editor, version 3.2.1</p>"
+        "<p>A simple ROI editor written in PySide6.</p>")
+    shown = capture_about(monkeypatch)
+    window.ui.action_about.trigger()
+    assert shown == [body]
+
+
+def test_the_about_box_names_a_version_it_does_not_have(
+        window, monkeypatch) -> None:
+    QCoreApplication.application_version = ''
+    body = (
+        "<p>ROI Editor, version (unspecified version)</p>"
+        "<p>A simple ROI editor written in PySide6.</p>")
+    shown = capture_about(monkeypatch)
+    window.ui.action_about.trigger()
+    assert shown == [body]
+
+
+def test_a_missing_distribution_has_no_version(monkeypatch) -> None:
+    def missing(name: str) -> str:
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(importlib.metadata, 'version', missing)
+    assert installed_version() == ''
 
 
 def test_an_invalid_coordinate_is_not_accepted(window) -> None:

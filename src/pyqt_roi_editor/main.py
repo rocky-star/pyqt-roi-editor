@@ -5,9 +5,12 @@ in the `.ui` file, so the generated form stays as the skeleton it
 started as.
 """
 
-__all__ = ['APPLICATION_NAME', 'EditMode', 'MainWindow', 'main']
+__all__ = [
+    'APPLICATION_NAME', 'EditMode', 'MainWindow', 'installed_version', 'main',
+]
 
 import enum
+import importlib.metadata
 import math
 import sys
 from pathlib import Path
@@ -953,14 +956,17 @@ class MainWindow(QMainWindow):
     # Help
 
     def _show_about(self) -> None:
-        """Show the about box, named after the application."""
+        """Show the about box, with the application name and version."""
         app_name = QCoreApplication.application_name
+        version = (
+            QCoreApplication.application_version
+            or self.__tr("(unspecified version)"))
+        text = self.__tr(
+            "<p>%1, version %2</p>"
+            + "<p>A simple ROI editor written in PySide6.</p>")
         QMessageBox.about(
             self, qformat(self.__tr("About %1"), [app_name]),
-            qformat(
-                self.__tr(
-                    "<p>%1</p><p>A simple ROI editor written in PySide6.</p>"),
-                [app_name]))
+            qformat(text, [app_name, version]))
 
     def _show_about_qt(self) -> None:
         """Show the Qt about box."""
@@ -983,10 +989,27 @@ class MainWindow(QMainWindow):
             'MainWindow', source_text, disambiguation, n)
 
 
+def installed_version() -> str:
+    """Return the version of the installed distribution, or ``''``.
+
+    The metadata names the distribution, which carries the package
+    with the punctuation the packaging uses.  A source tree that was
+    never installed has no metadata to read, and so no version to
+    show.
+    """
+    try:
+        return importlib.metadata.version('pyqt-roi-editor')
+    except importlib.metadata.PackageNotFoundError:
+        return ''
+
+
 def main() -> None:
     """Run the editor."""
     app = QApplication(sys.argv)
-    QCoreApplication.application_name = APPLICATION_NAME  # pyrefly: ignore[bad-assignment]
+    # pyrefly: ignore[bad-assignment]
+    QCoreApplication.application_name = APPLICATION_NAME
+    # pyrefly: ignore[bad-assignment]
+    QCoreApplication.application_version = installed_version()
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
