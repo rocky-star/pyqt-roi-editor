@@ -392,15 +392,19 @@ class MainWindow(QMainWindow):
         has_vertex = has_shape and self._selected_vertex is not None
         can_add_vertex = shape is not None and shape.accepts_vertices
         idle = self._mode is EditMode.NONE
-        self.ui.action_remove_basemap.enabled = has_basemap
+        # A new shape is built from basemap pixels, so there has to be
+        # an image to build it on.
+        can_start_shape = idle and has_basemap
+        self.ui.action_remove_basemap.enabled = (
+            has_basemap and not self._last_basemap_carries_shapes())
         self.ui.action_rename_basemap.enabled = has_basemap
         self.ui.action_remove_shape.enabled = has_shape and idle
         self.ui.action_shape_props.enabled = has_shape and idle
         self.ui.action_dump_shape.enabled = has_shape
         self.ui.action_add_vertex.enabled = can_add_vertex and idle
         self.ui.action_remove_vertex.enabled = has_vertex and idle
-        self.ui.action_add_line.enabled = idle
-        self.ui.action_add_polygon.enabled = idle
+        self.ui.action_add_line.enabled = can_start_shape
+        self.ui.action_add_polygon.enabled = can_start_shape
 
     # Selection
 
@@ -442,16 +446,20 @@ class MainWindow(QMainWindow):
         return None
 
     def _on_basemap_selection_changed(self) -> None:
-        """Switch the shown basemap to the selected one."""
+        """Switch the shown basemap to the selected one.
+
+        Clicking an empty spot in the list clears the selection, which
+        is not a request to show nothing: the image that is shown
+        stays the one it was, and the list is put back on it.
+        """
         if self._syncing:
             return
         indexes = self.basemaps_view.selection_model().selected_indexes
-        if indexes:
-            self._basemap_index = indexes[0].row()
-            self._document.active_basemap = self._basemap_index
-        else:
-            self._basemap_index = None
-            self._document.active_basemap = -1
+        if not indexes:
+            self._apply_basemap_selection()
+            return
+        self._basemap_index = indexes[0].row()
+        self._document.active_basemap = self._basemap_index
         self._update_action_states()
         self._refresh_scene()
 
@@ -485,7 +493,14 @@ class MainWindow(QMainWindow):
         self._start_shape(ShapeKind.POLYGON)
 
     def _start_shape(self, kind: ShapeKind) -> None:
-        """Start a shape of `kind`; the palette waits for a digit."""
+        """Start a shape of `kind`; the palette waits for a digit.
+
+        Coordinates are basemap pixels, so a shape drawn over no image
+        at all would mean nothing, and the action is not offered
+        either.
+        """
+        if self._document.current_basemap is None:
+            return
         self._cancel_mode()
         self._draft = Shape(name=self._unique_shape_name(), kind=kind)
         if kind is ShapeKind.LINE:
@@ -621,6 +636,11 @@ class MainWindow(QMainWindow):
         if self._mode is EditMode.NONE:
             return
         self._leave_mode()
+
+    def _drop_draft_without_basemap(self) -> None:
+        """Stop drawing once the image it is drawn on is gone."""
+        if self._document.current_basemap is None:
+            self._cancel_mode()
 
     def _finish_shape(self) -> None:
         """Keep the shape being drawn when it has enough vertices."""
@@ -789,10 +809,22 @@ class MainWindow(QMainWindow):
         self._document.active_basemap = len(self._document.basemaps) - 1
         self._refresh_all()
 
+    def _last_basemap_carries_shapes(self) -> bool:
+        """Return whether the only image left is drawn on.
+
+        The vertices of a shape are pixels of an image, so a document
+        holding shapes keeps the image they are placed in; without one
+        the shapes would be coordinates of nothing.
+        """
+        return len(self._document.basemaps) == 1 and bool(
+            self._document.shapes)
+
     def _remove_basemap(self) -> None:
         """Drop the selected basemap after a confirmation."""
         index = self._basemap_index
         if index is None or not 0 <= index < len(self._document.basemaps):
+            return
+        if self._last_basemap_carries_shapes():
             return
         basemap = self._document.basemaps[index]
         answer = QMessageBox.question(
@@ -803,6 +835,7 @@ class MainWindow(QMainWindow):
         del self._document.basemaps[index]
         if self._document.active_basemap >= len(self._document.basemaps):
             self._document.active_basemap = len(self._document.basemaps) - 1
+        self._drop_draft_without_basemap()
         self._refresh_all()
 
     def _rename_basemap(self) -> None:

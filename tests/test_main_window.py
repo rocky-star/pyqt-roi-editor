@@ -38,13 +38,41 @@ from pyqt_roi_editor.storage import save_document
 from __feature__ import snake_case, true_property
 
 
+def sample_image() -> QImage:
+    """Return the image the tests draw on."""
+    image = QImage(100, 80, QImage.Format.Format_RGB32)
+    image.fill(0xff336699)
+    return image
+
+
+def show_basemap(window: MainWindow) -> None:
+    """Give `window` a basemap and show it."""
+    window.document.basemaps.append(Basemap('map', sample_image(), 'PNG'))
+    window.document.active_basemap = len(window.document.basemaps) - 1
+    window._refresh_all()
+
+
 @pytest.fixture
 def window(qapp):
-    """Return a shown main window with the application name in place."""
+    """Return a shown main window with a basemap to draw on.
+
+    The editor draws nothing before an image is shown, and nearly
+    every test edits shapes, so the common window starts with one.
+    """
     QCoreApplication.application_name = APPLICATION_NAME
     main_window = MainWindow()
     main_window.show()
+    show_basemap(main_window)
     return main_window
+
+
+@pytest.fixture
+def blank_window(window):
+    """Return a shown main window with no basemap at all."""
+    window.document.basemaps.clear()
+    window.document.active_basemap = -1
+    window._refresh_all()
+    return window
 
 
 @pytest.fixture(autouse=True)
@@ -81,11 +109,9 @@ def type_coords(window: MainWindow, text: str) -> None:
 
 def sample_path(tmp_path: Path) -> Path:
     """Write and return a document holding a 100x80 basemap."""
-    image = QImage(100, 80, QImage.Format.Format_RGB32)
-    image.fill(0xff336699)
     path = tmp_path / 'sample.rsroi'
     save_document(
-        Document(basemaps=[Basemap('map', image, 'PNG')],
+        Document(basemaps=[Basemap('map', sample_image(), 'PNG')],
                  active_basemap=0),
         path)
     return path
@@ -345,13 +371,19 @@ def test_the_dump_dialog_offers_the_compact_format(window) -> None:
     assert dialog.ui.format_box.current_text == "Compact"
 
 
-def test_only_the_drawable_actions_start_out_enabled(window) -> None:
+def test_a_basemap_is_what_makes_drawing_available(window) -> None:
     assert window.ui.action_add_line.enabled
     assert window.ui.action_add_polygon.enabled
+    assert window.ui.action_remove_basemap.enabled
     assert not window.ui.action_remove_shape.enabled
     assert not window.ui.action_add_vertex.enabled
     assert not window.ui.action_dump_shape.enabled
-    assert not window.ui.action_remove_basemap.enabled
+
+
+def test_nothing_is_drawn_before_a_basemap_is_shown(blank_window) -> None:
+    assert not blank_window.ui.action_add_line.enabled
+    assert not blank_window.ui.action_add_polygon.enabled
+    assert not blank_window.ui.action_remove_basemap.enabled
 
 
 def test_a_polygon_is_drawn_from_typed_coordinates(window) -> None:
@@ -415,14 +447,39 @@ def test_a_line_with_one_vertex_is_dropped(window) -> None:
     assert window.document.shapes == []
 
 
-def test_drawing_works_without_a_basemap(window) -> None:
+def test_a_shape_is_not_started_without_a_basemap(blank_window) -> None:
+    # The actions are disabled, so the slots behind them are the
+    # backstop a disabled menu entry never reaches.
+    blank_window._add_line()
+    blank_window._add_polygon()
+    assert blank_window._mode is EditMode.NONE
+    assert blank_window._draft is None
+    assert blank_window.document.shapes == []
+
+
+def test_removing_the_basemap_gives_up_the_draft(
+        window, monkeypatch) -> None:
+    monkeypatch.setattr(
+        QMessageBox, 'question',
+        staticmethod(lambda *args, **kwargs: QMessageBox.StandardButton.Yes))
     window.ui.action_add_line.trigger()
-    window.roi_view.clicked.emit(QPointF(-5, -5))
-    window.roi_view.clicked.emit(QPointF(5, 5))
-    shape = window.document.shapes[0]
-    assert [(p.x(), p.y()) for p in shape.vertices] == [(-5.0, -5.0),
-                                                        (5.0, 5.0)]
-    assert not shape.allow_vertices_outside_basemap
+    window.roi_view.clicked.emit(QPointF(10, 10))
+    window.ui.action_remove_basemap.trigger()
+    assert window._mode is EditMode.NONE
+    assert window._draft is None
+    assert window.document.shapes == []
+
+
+def test_clearing_the_basemap_selection_keeps_the_image(window) -> None:
+    window.ui.action_add_polygon.trigger()
+    window.roi_view.clicked.emit(QPointF(10, 10))
+    window.basemaps_view.selection_model().clear()
+    # An empty spot of the list is not a request to show nothing.
+    assert window.document.active_basemap == 0
+    assert window._basemap_index == 0
+    assert window.basemaps_view.selection_model().selected_indexes
+    assert window._mode is EditMode.CREATE_SHAPE
+    press(window, Qt.Key.Key_Escape)
 
 
 def test_a_typed_coordinate_outside_the_basemap_sets_the_flag(
@@ -497,7 +554,7 @@ def test_a_basemap_is_listed_and_shown(window, tmp_path) -> None:
 
 
 def test_a_basemap_is_loaded_through_the_file_dialog(
-        window, monkeypatch, tmp_path) -> None:
+        blank_window, monkeypatch, tmp_path) -> None:
     image = QImage(20, 10, QImage.Format.Format_RGB32)
     image.fill(0xff00ff00)
     path = tmp_path / 'map.png'
@@ -505,26 +562,28 @@ def test_a_basemap_is_loaded_through_the_file_dialog(
     monkeypatch.setattr(
         QFileDialog, 'get_open_file_name',
         staticmethod(lambda *args, **kwargs: (str(path), '')))
-    window.ui.action_add_basemap.trigger()
-    assert [basemap.name for basemap in window.document.basemaps] == ["map"]
-    assert window.document.active_basemap == 0
-    assert window._scene.scene_rect.width() == 20.0
-    assert window.basemaps_view.model().item(0).text() == "map"
+    blank_window.ui.action_add_basemap.trigger()
+    assert [basemap.name for basemap in blank_window.document.basemaps] == [
+        "map"]
+    assert blank_window.document.active_basemap == 0
+    assert blank_window._scene.scene_rect.width() == 20.0
+    assert blank_window.basemaps_view.model().item(0).text() == "map"
+    assert blank_window.ui.action_add_line.enabled
 
 
 def test_a_file_dialog_starts_in_the_documents_folder(
-        window, monkeypatch) -> None:
+        blank_window, monkeypatch) -> None:
     asked = capture_dialogs(monkeypatch)
-    window.ui.action_open.trigger()
-    window.ui.action_add_basemap.trigger()
+    blank_window.ui.action_open.trigger()
+    blank_window.ui.action_add_basemap.trigger()
     assert asked == [documents_folder()] * 2
 
 
 def test_a_file_dialog_starts_where_the_last_document_was_saved(
-        window, monkeypatch, tmp_path) -> None:
+        blank_window, monkeypatch, tmp_path) -> None:
     asked = capture_dialogs(monkeypatch)
-    assert window.save_path(tmp_path / 'doc.rsroi')
-    window.ui.action_open.trigger()
+    assert blank_window.save_path(tmp_path / 'doc.rsroi')
+    blank_window.ui.action_open.trigger()
     assert asked == [str(tmp_path)]
 
 
@@ -568,12 +627,12 @@ def test_the_save_dialog_offers_the_name_in_the_start_folder(
 
 
 def test_the_documents_folder_falls_back_to_the_home_folder(
-        window, monkeypatch) -> None:
+        blank_window, monkeypatch) -> None:
     asked = capture_dialogs(monkeypatch)
     monkeypatch.setattr(
         QStandardPaths, 'writable_location',
         staticmethod(lambda location: ''))
-    window.ui.action_open.trigger()
+    blank_window.ui.action_open.trigger()
     assert asked == [str(Path.home())]
 
 
@@ -647,6 +706,43 @@ def test_a_vertex_cannot_be_added_to_a_line(window) -> None:
 def test_a_vertex_is_still_added_to_a_polygon(window) -> None:
     draw_polygon(window)
     assert window.ui.action_add_vertex.enabled
+
+
+def test_the_last_basemap_is_kept_while_shapes_are_drawn(
+        window, monkeypatch) -> None:
+    monkeypatch.setattr(
+        QMessageBox, 'question',
+        staticmethod(lambda *args, **kwargs: QMessageBox.StandardButton.Yes))
+    draw_polygon(window)
+    # The shapes live in the pixels of the image, so it stays, and the
+    # vertex edit it backs keeps working.
+    assert not window.ui.action_remove_basemap.enabled
+    window._remove_basemap()
+    assert len(window.document.basemaps) == 1
+    assert len(window.document.shapes) == 1
+    assert window.ui.action_add_vertex.enabled
+
+
+def test_a_basemap_without_shapes_can_go(window, monkeypatch) -> None:
+    monkeypatch.setattr(
+        QMessageBox, 'question',
+        staticmethod(lambda *args, **kwargs: QMessageBox.StandardButton.Yes))
+    assert window.ui.action_remove_basemap.enabled
+    window.ui.action_remove_basemap.trigger()
+    assert window.document.basemaps == []
+
+
+def test_a_spare_basemap_can_go_while_shapes_stay(window, monkeypatch) -> None:
+    monkeypatch.setattr(
+        QMessageBox, 'question',
+        staticmethod(lambda *args, **kwargs: QMessageBox.StandardButton.Yes))
+    draw_polygon(window)
+    show_basemap(window)
+    assert window.ui.action_remove_basemap.enabled
+    window.ui.action_remove_basemap.trigger()
+    assert len(window.document.basemaps) == 1
+    assert len(window.document.shapes) == 1
+    assert not window.ui.action_remove_basemap.enabled
 
 
 def test_removing_a_vertex_leaves_the_rest(window) -> None:

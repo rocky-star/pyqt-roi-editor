@@ -111,6 +111,10 @@ def load_document(path: Path) -> Document:
             OSError, zipfile.BadZipFile, KeyError,
             TypeError, ValueError) as error:
         raise StorageError(str(error)) from error
+    if shapes and not basemaps:
+        # The vertices of a shape are pixels of an image, so a
+        # document holding shapes holds the image they belong to.
+        raise StorageError("shapes without a basemap to place them in")
     active = _as_number(payload.get('active_basemap', -1))
     active_index = int(active) if active is not None else -1
     if not 0 <= active_index < len(basemaps):
