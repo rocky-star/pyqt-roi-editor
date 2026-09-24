@@ -58,6 +58,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListView,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QTreeView,
 )
@@ -159,6 +160,8 @@ class MainWindow(QMainWindow):
         self.roi_view.object_name = 'roi_view'
         self.roi_view.set_render_hint(QPainter.RenderHint.Antialiasing)
         self.roi_view.background_brush = QBrush(QColor(64, 64, 64))
+        self.roi_view.context_menu_policy = (
+            Qt.ContextMenuPolicy.CustomContextMenu)
         self.set_central_widget(self.roi_view)
         self._scene = QGraphicsScene(self)
         self.roi_view.set_scene(self._scene)
@@ -181,6 +184,8 @@ class MainWindow(QMainWindow):
         self.shapes_view.set_model(self._shapes_model)
         self.shapes_view.edit_triggers = (
             QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.shapes_view.context_menu_policy = (
+            Qt.ContextMenuPolicy.CustomContextMenu)
         self.shapes_view.header().set_section_resize_mode(
             QHeaderView.ResizeMode.Stretch)
         self.dock_shapes = QDockWidget(self.__tr("Shapes"), self)
@@ -214,6 +219,9 @@ class MainWindow(QMainWindow):
         self.zoom_box.ratio_requested.connect(self._zoom_to_ratio)
         self.zoom_box.fit_requested.connect(self._zoom_to_fit)
         self.roi_view.resized.connect(self._reapply_zoom)
+        self.roi_view.customContextMenuRequested.connect(self._show_view_menu)
+        self.shapes_view.customContextMenuRequested.connect(
+            self._show_shapes_menu)
         self.basemaps_view.selection_model().selectionChanged.connect(
             self._on_basemap_selection_changed)
         self.shapes_view.selection_model().selectionChanged.connect(
@@ -553,6 +561,73 @@ class MainWindow(QMainWindow):
             self.zoom_box.show_ratio(self._zoom_ratio)
             return
         self.zoom_box.show_fit(self._zoom_fit, self._zoom_ratio)
+
+    # Context menus
+
+    def _show_shapes_menu(self, position: QPoint) -> None:
+        """Offer what can be done to the item under `position`.
+
+        The item the pointer is on becomes the selection, so that the
+        menu describes what is about to be acted on rather than what
+        happened to be selected before.
+        """
+        if self._mode is not EditMode.NONE:
+            return
+        index = self.shapes_view.index_at(position)
+        if not index.is_valid():
+            return
+        self.shapes_view.set_current_index(index)
+        self.shapes_view.selection_model().select(
+            index,
+            QItemSelectionModel.SelectionFlag.ClearAndSelect
+            | QItemSelectionModel.SelectionFlag.Rows)
+        menu = self._selection_menu(add_vertex=False)
+        if menu is not None:
+            menu.popup(self.shapes_view.viewport().map_to_global(position))
+
+    def _show_view_menu(self, position: QPoint) -> None:
+        """Offer what can be done to what is drawn under `position`.
+
+        Empty canvas has nothing to act on, but it is where a shape is
+        drawn, so it offers the shapes that can be started.
+        """
+        if self._mode is not EditMode.NONE:
+            return
+        self._select_at(self.roi_view.map_to_scene(position))
+        menu = self._selection_menu(add_vertex=True)
+        if menu is None:
+            menu = self._add_shape_menu()
+        menu.popup(self.roi_view.viewport().map_to_global(position))
+
+    def _add_shape_menu(self) -> QMenu:
+        """Return a menu holding the shapes that can be started."""
+        menu = QMenu(self)
+        menu.add_menu(self.ui.menu_add_shape)
+        return menu
+
+    def _selection_menu(self, *, add_vertex: bool) -> QMenu | None:
+        """Return the menu of what can be done to the selection.
+
+        Nothing is offered without a selected shape; the vertices of
+        one add an action of their own.  Starting a vertex is offered
+        on the canvas alone, since that is where the places to put one
+        are.
+        """
+        if self._selected_shape is None:
+            return None
+        menu = QMenu(self)
+        menu.add_actions((
+            self.ui.action_remove_shape,
+            self.ui.action_shape_props,
+            self.ui.action_dump_shape,
+        ))
+        if add_vertex or self._selected_vertex is not None:
+            menu.add_separator()
+        if add_vertex:
+            menu.add_action(self.ui.action_add_vertex)
+        if self._selected_vertex is not None:
+            menu.add_action(self.ui.action_remove_vertex)
+        return menu
 
     # Drawing a shape
 

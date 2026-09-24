@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
     QListView,
+    QMenu,
     QMessageBox,
     QTreeView,
 )
@@ -83,6 +84,30 @@ def silent_message_boxes(monkeypatch):
     for name in ('critical', 'question', 'information'):
         monkeypatch.setattr(
             QMessageBox, name, staticmethod(lambda *args, **kwargs: None))
+
+
+@pytest.fixture(autouse=True)
+def closed_menus():
+    """Close a context menu a test left open."""
+    yield
+    popup = QApplication.active_popup_widget()
+    if popup is not None:
+        popup.close()
+
+
+def open_menu(widget, position: QPoint) -> QMenu:
+    """Ask `widget` for its context menu at `position`, and return it."""
+    widget.customContextMenuRequested.emit(position)
+    menu = QApplication.active_popup_widget()
+    assert isinstance(menu, QMenu)
+    return menu
+
+
+def menu_entries(menu: QMenu) -> list[str]:
+    """Return what `menu` holds, naming the separators it uses."""
+    return [
+        '---' if action.is_separator() else action.text
+        for action in menu.actions()]
 
 
 def press(window: MainWindow, key: Qt.Key) -> None:
@@ -260,6 +285,96 @@ def test_the_zoom_box_keeps_its_own_keys_while_drawing(
     QTest.key_click(edit, Qt.Key.Key_Return)
     assert window._mode is EditMode.CREATE_SHAPE
     assert window.document.shapes == []
+
+
+def test_both_views_offer_a_context_menu_of_their_own(window) -> None:
+    assert window.roi_view.context_menu_policy is (
+        Qt.ContextMenuPolicy.CustomContextMenu)
+    assert window.shapes_view.context_menu_policy is (
+        Qt.ContextMenuPolicy.CustomContextMenu)
+
+
+def test_the_canvas_menu_of_a_shape_offers_starting_a_vertex(
+        window) -> None:
+    draw_polygon(window)
+    window._select(None, None)
+    spot = window.roi_view.map_from_scene(QPointF(5, 0))
+    menu = open_menu(window.roi_view, spot)
+    assert menu_entries(menu) == [
+        '&Remove Shape', 'Shape &Properties...', '&Dump Shape', '---',
+        '&Add Vertex...']
+    # The entries are the actions of the window, so they arrive with
+    # the state the window keeps for them.
+    assert window.ui.action_add_vertex in menu.actions()
+    assert window.ui.action_add_vertex.enabled
+    assert not window.ui.action_remove_vertex.enabled
+
+
+def test_the_canvas_menu_of_a_vertex_offers_removing_it(window) -> None:
+    draw_polygon(window)
+    spot = window.roi_view.map_from_scene(QPointF(10, 10))
+    menu = open_menu(window.roi_view, spot)
+    assert window._selected_vertex == 2
+    assert menu_entries(menu) == [
+        '&Remove Shape', 'Shape &Properties...', '&Dump Shape', '---',
+        '&Add Vertex...', '&Remove Vertex']
+    assert window.ui.action_remove_vertex.enabled
+
+
+def test_the_canvas_offers_the_shapes_to_add_over_nothing(window) -> None:
+    draw_polygon(window)
+    window._select(None, None)
+    spot = window.roi_view.map_from_scene(QPointF(90, 70))
+    menu = open_menu(window.roi_view, spot)
+    assert menu_entries(menu) == ['&Add Shape']
+    assert menu.actions()[0].menu() is window.ui.menu_add_shape
+    assert [action.text for action in window.ui.menu_add_shape.actions()] == [
+        '&Line', '&Polygon']
+
+
+def test_the_tree_menu_of_a_shape_holds_the_shape_actions(window) -> None:
+    draw_polygon(window)
+    window._select(None, None)
+    item = window.shapes_view.model().item(0)
+    position = window.shapes_view.visual_rect(item.index()).center()
+    menu = open_menu(window.shapes_view, position)
+    assert menu_entries(menu) == [
+        '&Remove Shape', 'Shape &Properties...', '&Dump Shape']
+    assert window._selected_shape is window.document.shapes[0]
+    assert window._selected_vertex is None
+
+
+def test_the_tree_menu_of_a_vertex_offers_removing_it(window) -> None:
+    draw_polygon(window)
+    item = window.shapes_view.model().item(0).child(1, 0)
+    position = window.shapes_view.visual_rect(item.index()).center()
+    menu = open_menu(window.shapes_view, position)
+    assert menu_entries(menu) == [
+        '&Remove Shape', 'Shape &Properties...', '&Dump Shape', '---',
+        '&Remove Vertex']
+    assert window._selected_shape is window.document.shapes[0]
+    assert window._selected_vertex == 1
+
+
+def test_a_right_click_selects_the_shape_it_lands_on(window) -> None:
+    draw_polygon(window)
+    window._select(None, None)
+    spot = window.roi_view.map_from_scene(QPointF(10, 0))
+    open_menu(window.roi_view, spot).close()
+    assert window._selected_shape is window.document.shapes[0]
+    assert window._selected_vertex is None
+    # The vertices of a shape answer once it is the selected one.
+    open_menu(window.roi_view, spot)
+    assert window._selected_vertex == 1
+
+
+def test_no_menu_is_offered_while_drawing(window) -> None:
+    draw_polygon(window)
+    window.ui.action_add_polygon.trigger()
+    spot = window.roi_view.map_from_scene(QPointF(10, 10))
+    window.roi_view.customContextMenuRequested.emit(spot)
+    assert QApplication.active_popup_widget() is None
+    assert window._mode is EditMode.CREATE_SHAPE
 
 
 def test_both_docks_are_stacked_on_one_side(window) -> None:
