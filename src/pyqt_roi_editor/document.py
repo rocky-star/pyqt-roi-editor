@@ -101,6 +101,9 @@ class Basemap:
 class Shape:
     """One line or polygon being edited.
 
+    A line is a segment and holds exactly its two endpoints, while a
+    polygon is closed and grows with every vertex added to it.
+
     Instances compare and hash by identity, so the shape a view is
     tracking is always the one held by the document.
 
@@ -111,7 +114,8 @@ class Shape:
     kind : ShapeKind
         Whether the vertices trace a line or a polygon.
     vertices : list[QPointF]
-        The vertices, in the order they are joined, in basemap pixels.
+        The vertices, in the order they are joined, in basemap pixels;
+        the two ends of a line, or the corners of a polygon.
     allow_vertices_outside_basemap : bool
         Whether vertices outside the basemap are accepted; typing such
         a coordinate turns this on by itself.
@@ -127,6 +131,16 @@ class Shape:
         """Return whether the last vertex is joined back to the first."""
         return self.kind is ShapeKind.POLYGON
 
+    @property
+    def accepts_vertices(self) -> bool:
+        """Return whether another vertex may be added to the shape.
+
+        A segment has both of its endpoints as soon as it holds two
+        vertices, so there is no third one to give it; a polygon takes
+        as many as it is offered.
+        """
+        return self.kind is ShapeKind.POLYGON or len(self.vertices) < 2
+
     def edges(self) -> list[tuple[int, int]]:
         """Return the index pairs of the vertices the shape joins."""
         if len(self.vertices) < 2:
@@ -136,7 +150,7 @@ class Shape:
             edges.append((len(self.vertices) - 1, 0))
         return edges
 
-    def insert_vertex(self, point: QPointF) -> int:
+    def insert_vertex(self, point: QPointF) -> int | None:
         """Insert `point` between the nearest pair of joined vertices.
 
         The edge whose segment lies closest to `point` is found, and
@@ -150,9 +164,12 @@ class Shape:
 
         Returns
         -------
-        int
-            The index the new vertex was inserted at.
+        int or None
+            The index the new vertex was inserted at, or ``None`` when
+            the shape already holds every vertex it can take.
         """
+        if not self.accepts_vertices:
+            return None
         if len(self.vertices) < 2:
             self.vertices.append(point)
             return len(self.vertices) - 1

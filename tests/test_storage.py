@@ -102,3 +102,15 @@ def test_an_unsupported_version_is_rejected(tmp_path: Path) -> None:
             ' "shapes": []}')
     with pytest.raises(StorageError):
         load_document(path)
+
+
+def test_a_line_of_three_vertices_is_rejected(tmp_path: Path) -> None:
+    path = tmp_path / 'doc.rsroi'
+    with zipfile.ZipFile(path, 'w') as archive:
+        archive.writestr(
+            'data.json',
+            '{"format": "rsroi", "version": 1, "basemaps": [],'
+            ' "shapes": [{"name": "line", "kind": "line",'
+            ' "vertices": [[0, 0], [1, 1], [2, 2]]}]}')
+    with pytest.raises(StorageError):
+        load_document(path)

@@ -380,16 +380,18 @@ class MainWindow(QMainWindow):
 
     def _update_action_states(self) -> None:
         """Enable each action whose target currently exists."""
+        shape = self._selected_shape
         has_basemap = self._basemap_index is not None
-        has_shape = self._selected_shape is not None
+        has_shape = shape is not None
         has_vertex = has_shape and self._selected_vertex is not None
+        can_add_vertex = shape is not None and shape.accepts_vertices
         idle = self._mode is EditMode.NONE
         self.ui.action_remove_basemap.enabled = has_basemap
         self.ui.action_rename_basemap.enabled = has_basemap
         self.ui.action_remove_shape.enabled = has_shape and idle
         self.ui.action_shape_props.enabled = has_shape and idle
         self.ui.action_dump_shape.enabled = has_shape
-        self.ui.action_add_vertex.enabled = has_shape and idle
+        self.ui.action_add_vertex.enabled = can_add_vertex and idle
         self.ui.action_remove_vertex.enabled = has_vertex and idle
         self.ui.action_add_line.enabled = idle
         self.ui.action_add_polygon.enabled = idle
@@ -480,9 +482,14 @@ class MainWindow(QMainWindow):
         """Start a shape of `kind`; the palette waits for a digit."""
         self._cancel_mode()
         self._draft = Shape(name=self._unique_shape_name(), kind=kind)
-        self._enter_mode(
-            EditMode.CREATE_SHAPE,
-            self.__tr("Click or type digits; Enter finishes, Esc cancels."))
+        if kind is ShapeKind.LINE:
+            # A segment is finished by its second vertex, so there is
+            # no point in telling the user about Enter.
+            hint = self.__tr("Click or type both endpoints; Esc cancels.")
+        else:
+            hint = self.__tr(
+                "Click or type digits; Enter finishes, Esc cancels.")
+        self._enter_mode(EditMode.CREATE_SHAPE, hint)
 
     def _start_add_vertex(self) -> None:
         """Start inserting vertices into the selected shape."""
@@ -644,17 +651,26 @@ class MainWindow(QMainWindow):
     def _add_point(self, point: QPointF) -> None:
         """Append or insert a vertex at `point`."""
         if self._mode is EditMode.CREATE_SHAPE:
-            if self._draft is None:
+            draft = self._draft
+            if draft is None:
                 return
-            self._draft.vertices.append(point)
-            self._note_outside(self._draft, point)
+            draft.vertices.append(point)
+            self._note_outside(draft, point)
+            if not draft.accepts_vertices:
+                # A segment holds both of its endpoints now, so there
+                # is nothing left to draw and the shape is kept.
+                self._finish_shape()
+                return
             self._refresh_scene()
             return
         shape = self._selected_shape
         if shape is None:
             return
-        self._selected_vertex = shape.insert_vertex(point)
+        index = shape.insert_vertex(point)
+        if index is None:
+            return
         self._note_outside(shape, point)
+        self._selected_vertex = index
         self._selected_shape = shape
         self._refresh_all()
 

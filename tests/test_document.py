@@ -55,15 +55,39 @@ def test_insert_vertex_appends_while_there_is_no_edge() -> None:
 
 
 def test_insert_vertex_uses_the_nearest_edge() -> None:
-    shape = Shape('s', ShapeKind.LINE, [
+    shape = Shape('s', ShapeKind.POLYGON, [
         QPointF(0, 0), QPointF(10, 0), QPointF(10, 10)])
     assert shape.insert_vertex(QPointF(5, 1)) == 1
+    assert shape.vertices[1] == QPointF(5, 1)
 
 
 def test_insert_vertex_can_use_the_closing_edge() -> None:
     shape = Shape('s', ShapeKind.POLYGON, [
         QPointF(0, 0), QPointF(10, 0), QPointF(10, 10)])
     assert shape.insert_vertex(QPointF(5, 5)) == 3
+
+
+def test_a_line_refuses_a_third_vertex() -> None:
+    shape = Shape('s', ShapeKind.LINE, [QPointF(0, 0), QPointF(10, 10)])
+    assert shape.insert_vertex(QPointF(5, 5)) is None
+    assert shape.vertices == [QPointF(0, 0), QPointF(10, 10)]
+
+
+def test_a_line_stops_taking_vertices_at_its_two_ends() -> None:
+    line = Shape('s', ShapeKind.LINE)
+    assert line.accepts_vertices
+    line.insert_vertex(QPointF(0, 0))
+    assert line.accepts_vertices
+    line.insert_vertex(QPointF(10, 10))
+    assert not line.accepts_vertices
+    line.remove_vertex(1)
+    assert line.accepts_vertices
+
+
+def test_a_polygon_takes_another_vertex_whatever_it_holds() -> None:
+    polygon = Shape('s', ShapeKind.POLYGON, [
+        QPointF(0, 0), QPointF(10, 0), QPointF(10, 10)])
+    assert polygon.accepts_vertices
 
 
 def test_remove_vertex_drops_the_one_at_the_index() -> None:

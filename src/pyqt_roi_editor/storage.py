@@ -163,10 +163,14 @@ def _read_shape(entry: object) -> Shape:
         shape_kind = ShapeKind(kind)
     except ValueError as error:
         raise StorageError(f"unknown shape kind {kind!r}") from error
+    vertices = _read_vertices(mapping.get('vertices', []))
+    if shape_kind is ShapeKind.LINE and len(vertices) > 2:
+        # A line is a segment: it has the two ends and nothing else.
+        raise StorageError(f"the line {name!r} has more than two vertices")
     return Shape(
         name=name,
         kind=shape_kind,
-        vertices=_read_vertices(mapping.get('vertices', [])),
+        vertices=vertices,
         allow_vertices_outside_basemap=bool(
             mapping.get('allow_vertices_outside_basemap', False)))
 

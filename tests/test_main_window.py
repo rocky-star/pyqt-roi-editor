@@ -129,10 +129,11 @@ def test_a_minus_key_opens_the_palette(window) -> None:
     press(window, Qt.Key.Key_5)
     assert window.coords_input.visible
     window.coords_input.ui.coords_edit.text = "5, -2"
-    enter(window)
+    # The second endpoint completes the segment and ends the mode.
     enter(window)
     assert [(p.x(), p.y()) for p in window.document.shapes[0].vertices] == [
         (-5.0, -5.0), (5.0, -2.0)]
+    assert window._mode is EditMode.NONE
     assert not window.coords_input.visible
 
 
@@ -289,7 +290,6 @@ def test_the_shape_tree_lists_the_vertices(window) -> None:
     window.ui.action_add_line.trigger()
     for text in ('10, 10', '20, 20'):
         type_coords(window, text)
-    window.roi_view.finish_requested.emit()
     model = window.shapes_view.model()
     assert model.row_count() == 1
     assert model.item(0).text() == "Shape 1"
@@ -298,11 +298,23 @@ def test_the_shape_tree_lists_the_vertices(window) -> None:
     assert model.item(0).child(0, 2).text() == "10"
 
 
-def test_a_click_adds_a_vertex_while_drawing(window) -> None:
+def test_a_line_is_kept_once_both_of_its_ends_are_given(window) -> None:
     window.ui.action_add_line.trigger()
     window.roi_view.clicked.emit(QPointF(1, 2))
+    assert window.document.shapes == []
     window.roi_view.clicked.emit(QPointF(3, 4))
-    window.roi_view.finish_requested.emit()
+    assert window._mode is EditMode.NONE
+    assert [(p.x(), p.y()) for p in window.document.shapes[0].vertices] == [
+        (1.0, 2.0), (3.0, 4.0)]
+
+
+def test_a_line_keeps_no_third_vertex(window) -> None:
+    window.ui.action_add_line.trigger()
+    for point in (QPointF(1, 2), QPointF(3, 4), QPointF(5, 6)):
+        window.roi_view.clicked.emit(point)
+    # The last click belongs to the selection again, now that the
+    # segment is complete and the mode has ended.
+    assert len(window.document.shapes) == 1
     assert [(p.x(), p.y()) for p in window.document.shapes[0].vertices] == [
         (1.0, 2.0), (3.0, 4.0)]
 
@@ -326,7 +338,6 @@ def test_drawing_works_without_a_basemap(window) -> None:
     window.ui.action_add_line.trigger()
     window.roi_view.clicked.emit(QPointF(-5, -5))
     window.roi_view.clicked.emit(QPointF(5, 5))
-    window.roi_view.finish_requested.emit()
     shape = window.document.shapes[0]
     assert [(p.x(), p.y()) for p in shape.vertices] == [(-5.0, -5.0),
                                                         (5.0, 5.0)]
@@ -339,7 +350,6 @@ def test_a_typed_coordinate_outside_the_basemap_sets_the_flag(
     window.ui.action_add_line.trigger()
     type_coords(window, '10, 10')
     type_coords(window, '500, 10')
-    window.roi_view.finish_requested.emit()
     assert window.document.shapes[0].allow_vertices_outside_basemap
 
 
@@ -349,7 +359,6 @@ def test_a_clicked_point_inside_the_basemap_leaves_the_flag_alone(
     window.ui.action_add_line.trigger()
     window.roi_view.clicked.emit(QPointF(10, 10))
     window.roi_view.clicked.emit(QPointF(20, 20))
-    window.roi_view.finish_requested.emit()
     assert not window.document.shapes[0].allow_vertices_outside_basemap
 
 
@@ -389,7 +398,6 @@ def test_a_saved_document_round_trips_through_the_window(
     window.ui.action_add_line.trigger()
     for text in ('10, 10', '20, 20'):
         type_coords(window, text)
-    window.roi_view.finish_requested.emit()
     path = tmp_path / 'doc.rsroi'
     assert window.save_path(path)
     assert window.load_path(path)
@@ -478,17 +486,25 @@ def test_a_vertex_is_selected_by_clicking_near_it(window) -> None:
     window.ui.action_add_line.trigger()
     window.roi_view.clicked.emit(QPointF(10, 10))
     window.roi_view.clicked.emit(QPointF(20, 20))
-    window.roi_view.finish_requested.emit()
     window.roi_view.clicked.emit(QPointF(21, 20))
     assert window._selected_vertex == 1
     assert window.ui.action_remove_vertex.enabled
 
 
-def test_removing_a_vertex_leaves_the_rest(window) -> None:
+def test_a_vertex_cannot_be_added_to_a_line(window) -> None:
     window.ui.action_add_line.trigger()
-    for text in ('0, 0', '10, 0', '10, 10'):
-        type_coords(window, text)
-    window.roi_view.finish_requested.emit()
+    window.roi_view.clicked.emit(QPointF(10, 10))
+    window.roi_view.clicked.emit(QPointF(20, 20))
+    assert not window.ui.action_add_vertex.enabled
+
+
+def test_a_vertex_is_still_added_to_a_polygon(window) -> None:
+    draw_polygon(window)
+    assert window.ui.action_add_vertex.enabled
+
+
+def test_removing_a_vertex_leaves_the_rest(window) -> None:
+    draw_polygon(window)
     window.roi_view.clicked.emit(QPointF(10, 0))
     window.ui.action_remove_vertex.trigger()
     assert [(p.x(), p.y()) for p in window.document.shapes[0].vertices] == [
@@ -500,6 +516,5 @@ def test_a_new_shape_gets_a_free_name(window) -> None:
         window.ui.action_add_line.trigger()
         for text in ('0, 0', '1, 1'):
             type_coords(window, text)
-        window.roi_view.finish_requested.emit()
     assert [shape.name for shape in window.document.shapes] == [
         "Shape 1", "Shape 2"]
