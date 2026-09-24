@@ -165,7 +165,8 @@ class CoordsInput(QWidget):
         field = self.ui.coords_edit
         point = parse_coords(field.text)
         if point is None:
-            self._complain(self.__tr("Enter coordinates as 'x, y'"))
+            self._complain(
+                self.__tr("Enter coordinates as 'x, y' or 'x y'"))
             return
         if not _is_whole(point):
             self._complain(self.__tr("Coordinates must be whole numbers"))

@@ -90,6 +90,10 @@ _SELECTION_COLOR = QColor(255, 200, 0)
 _SELECTION_FILL = QColor(255, 200, 0, 64)
 # The keys that start a typed coordinate, and so open the palette.
 _COORDINATE_KEYS = '0123456789-'
+# The keys that may separate its two numbers.  Both forms are sent to
+# an open palette the way the digits are, so that a coordinate may be
+# typed either way wherever the focus happens to be.
+_SEPARATOR_KEYS = ', '
 
 
 class EditMode(enum.Enum):
@@ -773,7 +777,7 @@ class MainWindow(QMainWindow):
         if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Return,
                            Qt.Key.Key_Enter):
             return True
-        return event.text() in _COORDINATE_KEYS
+        return event.text() in _COORDINATE_KEYS + _SEPARATOR_KEYS
 
     def _handle_mode_key(self, event: QEvent) -> bool:
         """Act on a key of a drawing mode, and only then.
@@ -814,13 +818,23 @@ class MainWindow(QMainWindow):
         Typing only makes sense while a shape is drawn or a vertex is
         inserted; anywhere else the key is none of the mode's business
         and is reported as unhandled.
+
+        An open palette is given the separators as well as the digits,
+        rather than leaving them to the field: the field holds the
+        focus only until something else is clicked, and a key left to
+        it would then be lost, running the two numbers of a coordinate
+        together.
         """
         if self._mode not in (EditMode.CREATE_SHAPE, EditMode.ADD_VERTEX):
             return False
-        if self.coords_input.visible:
-            self.coords_input.insert_text(character)
-        else:
+        if not self.coords_input.visible:
+            if character not in _COORDINATE_KEYS:
+                return False
             self.coords_input.popup_at(self._palette_position(), character)
+            return True
+        if character not in _COORDINATE_KEYS + _SEPARATOR_KEYS:
+            return False
+        self.coords_input.insert_text(character)
         return True
 
     def _palette_position(self) -> QPoint:

@@ -516,6 +516,36 @@ def test_a_digit_is_taken_while_drawing(window) -> None:
     assert window.coords_input.visible
 
 
+def test_a_coordinate_may_be_typed_with_a_comma(window) -> None:
+    window.ui.action_add_polygon.trigger()
+    for key in (Qt.Key.Key_1, Qt.Key.Key_0, Qt.Key.Key_Comma,
+                Qt.Key.Key_2, Qt.Key.Key_0):
+        press(window, key)
+    assert window.coords_input.ui.coords_edit.text == "10,20"
+    press(window, Qt.Key.Key_Return)
+    draft = window._draft
+    assert draft is not None
+    assert [(p.x(), p.y()) for p in draft.vertices] == [(10.0, 20.0)]
+
+
+def test_a_coordinate_may_be_typed_with_a_space(window) -> None:
+    """The window reads the space into the palette, not the field.
+
+    The field holds the focus only until something else is clicked,
+    so a space left to it would be lost and the two numbers would
+    arrive run together.
+    """
+    window.ui.action_add_polygon.trigger()
+    for key in (Qt.Key.Key_1, Qt.Key.Key_0, Qt.Key.Key_Space,
+                Qt.Key.Key_2, Qt.Key.Key_0):
+        press(window, key)
+    assert window.coords_input.ui.coords_edit.text == "10 20"
+    press(window, Qt.Key.Key_Return)
+    draft = window._draft
+    assert draft is not None
+    assert [(p.x(), p.y()) for p in draft.vertices] == [(10.0, 20.0)]
+
+
 def test_escape_cancels_the_mode_even_with_the_focus_elsewhere(
         window) -> None:
     window.ui.action_add_line.trigger()
