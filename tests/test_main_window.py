@@ -15,6 +15,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QCursor, QGuiApplication, QImage, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QDockWidget,
     QFileDialog,
@@ -34,6 +35,7 @@ from pyqt_roi_editor.main import (
 from pyqt_roi_editor.roi_graphics_view import ROIGraphicsView
 from pyqt_roi_editor.shape_props_editor import ShapePropsEditor
 from pyqt_roi_editor.storage import save_document
+from pyqt_roi_editor.zoom_box import ZoomBox, ZoomFit
 
 from __feature__ import snake_case, true_property
 
@@ -171,12 +173,93 @@ def test_the_editing_area_is_a_graphics_view(window) -> None:
     assert isinstance(window.central_widget(), ROIGraphicsView)
 
 
+def test_the_zoom_box_sits_at_the_right_of_the_status_bar(window) -> None:
+    assert window.find_child(ZoomBox, 'zoom_box') is window.zoom_box
+    assert window.zoom_box.parent() is window.ui.statusbar
+    # A permanent widget is the one a status message leaves alone.
+    window.ui.statusbar.show_message("drawing")
+    assert window.zoom_box.visible
+
+
+def test_the_zoom_box_carries_a_tool_tip(window) -> None:
+    assert '149%' in window.zoom_box.tool_tip
+
+
+def test_the_view_starts_by_fitting_the_window(window) -> None:
+    assert window._zoom_fit is ZoomFit.WINDOW
+    viewport = window.roi_view.viewport()
+    rect = window._scene.scene_rect
+    assert window._zoom_ratio == pytest.approx(
+        min(viewport.width / rect.width(), viewport.height / rect.height()))
+    assert window.zoom_box.line_edit().text == 'Fit Window'
+
+
+def test_a_typed_percentage_zooms_the_view(window) -> None:
+    window.zoom_box.line_edit().text = '149%'
+    QTest.key_click(window.zoom_box.line_edit(), Qt.Key.Key_Return)
+    assert window._zoom_ratio == pytest.approx(1.49)
+    assert window.roi_view.transform().m11() == pytest.approx(1.49)
+    assert window.zoom_box.line_edit().text == '149%'
+
+
+def test_a_fitting_zoom_fills_the_viewport(window) -> None:
+    window.zoom_box.fit_requested.emit(ZoomFit.WIDTH)
+    viewport = window.roi_view.viewport()
+    assert window._zoom_ratio == pytest.approx(
+        viewport.width / window._scene.scene_rect.width())
+
+
+def test_a_fitting_zoom_follows_the_size_of_the_view(window, qapp) -> None:
+    window.zoom_box.fit_requested.emit(ZoomFit.WINDOW)
+    before = window._zoom_ratio
+    window.resize(window.width + 200, window.height + 100)
+    qapp.process_events()
+    viewport = window.roi_view.viewport()
+    assert window._zoom_ratio > before
+    assert window._zoom_ratio == pytest.approx(
+        viewport.width / window._scene.scene_rect.width())
+
+
+def test_a_fitting_zoom_survives_a_scene_refresh(window) -> None:
+    window.zoom_box.fit_requested.emit(ZoomFit.WIDTH)
+    fitted = window._zoom_ratio
+    window._refresh_all()
+    assert window._zoom_ratio == pytest.approx(fitted)
+
+
+def test_the_zoom_box_names_the_mode_the_view_follows(window) -> None:
+    window.zoom_box.fit_requested.emit(ZoomFit.WIDTH)
+    assert window.zoom_box.line_edit().text == 'Fit Width'
+    assert window.zoom_box.item_text(window.zoom_box.current_index) == (
+        'Fit Width')
+    window.zoom_box.fit_requested.emit(ZoomFit.WINDOW)
+    assert window.zoom_box.line_edit().text == 'Fit Window'
+
+
 def test_both_docks_hold_the_expected_view(window) -> None:
     assert window.find_child(QListView, 'basemaps_view') is (
         window.basemaps_view)
     assert window.find_child(QTreeView, 'shapes_view') is window.shapes_view
     docks = window.find_children(QDockWidget)
     assert [dock.window_title for dock in docks] == ["Basemaps", "Shapes"]
+
+
+def test_the_zoom_box_keeps_its_own_keys_while_drawing(
+        window, monkeypatch) -> None:
+    """The drawing modes leave the keys of the zoom box alone.
+
+    Nothing holds the focus in a headless run, so the box is named as
+    the widget that has it.
+    """
+    window.ui.action_add_polygon.trigger()
+    edit = window.zoom_box.line_edit()
+    monkeypatch.setattr(
+        QApplication, 'focus_widget', staticmethod(lambda: edit))
+    QTest.key_click(edit, Qt.Key.Key_5)
+    assert not window.coords_input.visible
+    QTest.key_click(edit, Qt.Key.Key_Return)
+    assert window._mode is EditMode.CREATE_SHAPE
+    assert window.document.shapes == []
 
 
 def test_both_docks_are_stacked_on_one_side(window) -> None:

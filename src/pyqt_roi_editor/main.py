@@ -70,6 +70,7 @@ from pyqt_roi_editor.roi_graphics_view import ROIGraphicsView
 from pyqt_roi_editor.shape_props_editor import ShapePropsEditor
 from pyqt_roi_editor.storage import StorageError, load_document, save_document
 from pyqt_roi_editor.ui_mainwindow import Ui_MainWindow
+from pyqt_roi_editor.zoom_box import ZoomBox, ZoomFit
 
 from __feature__ import snake_case, true_property  # pyright: ignore[reportUnusedImport]
 
@@ -131,6 +132,10 @@ class MainWindow(QMainWindow):
         self._basemap_item: QGraphicsPixmapItem | None = None
         self._document_directory: Path | None = None
         self._image_directory: Path | None = None
+        self._zoom_ratio = 1.0
+        # The view fits the window until it is asked for something
+        # else, which is what a document being opened expects.
+        self._zoom_fit: ZoomFit | None = ZoomFit.WINDOW
         self._syncing = False
         self._watching = False
         self._build_editor_area()
@@ -189,6 +194,10 @@ class MainWindow(QMainWindow):
         # drawn by this window and no compositor has a say in where it
         # ends up.
         self.coords_input = CoordsInput(self.roi_view.viewport())
+        # The zoom control sits at the right of the status bar, where
+        # a status message never reaches it.
+        self.zoom_box = ZoomBox(self)
+        self.ui.statusbar.add_permanent_widget(self.zoom_box)
         # The keys that drive drawing are caught for the whole
         # application: after a menu action the focus sits on the menu
         # bar, so the view never sees them.
@@ -202,6 +211,9 @@ class MainWindow(QMainWindow):
         self.roi_view.finish_requested.connect(self._finish_shape)
         self.coords_input.accepted.connect(self._on_coords_accepted)
         self.coords_input.rejected.connect(self._cancel_mode)
+        self.zoom_box.ratio_requested.connect(self._zoom_to_ratio)
+        self.zoom_box.fit_requested.connect(self._zoom_to_fit)
+        self.roi_view.resized.connect(self._reapply_zoom)
         self.basemaps_view.selection_model().selectionChanged.connect(
             self._on_basemap_selection_changed)
         self.shapes_view.selection_model().selectionChanged.connect(
@@ -346,6 +358,8 @@ class MainWindow(QMainWindow):
             self._add_shape_item(self._draft, True)
         if self._selected_shape is not None:
             self._add_handles(self._selected_shape)
+        # The area the view shows may have changed with the scene.
+        self._reapply_zoom()
 
     def _add_shape_item(self, shape: Shape, selected: bool) -> None:
         """Draw `shape`, highlighted when it is the selected one."""
@@ -482,6 +496,64 @@ class MainWindow(QMainWindow):
         self._update_action_states()
         self._refresh_scene()
 
+    # Zooming
+
+    def _zoom_to_ratio(self, ratio: float) -> None:
+        """Show the scene at `ratio` of its natural size."""
+        self._zoom_fit = None
+        self._apply_zoom(ratio)
+
+    def _zoom_to_fit(self, fit: ZoomFit) -> None:
+        """Keep following the viewport with the zoom `fit` names."""
+        self._zoom_fit = fit
+        self._reapply_zoom()
+
+    def _reapply_zoom(self) -> None:
+        """Apply the zoom the viewport size asks for, if it asks."""
+        if self._zoom_fit is None:
+            self._update_zoom_box()
+            return
+        ratio = self._fit_ratio(self._zoom_fit)
+        if abs(ratio - self._zoom_ratio) < 0.0005:
+            # The view is where it should be, but the box may still be
+            # showing the name of the mode it was asked for.
+            self._update_zoom_box()
+            return
+        self._apply_zoom(ratio)
+
+    def _fit_ratio(self, fit: ZoomFit) -> float:
+        """Return the ratio that fits the scene into the viewport.
+
+        `scene_rect` is a property once true_property is active, even
+        though the stub still describes the getter.
+        """
+        rect = cast('QRectF', self._scene.scene_rect)
+        if rect.width() <= 0.0 or rect.height() <= 0.0:
+            return 1.0
+        viewport = self.roi_view.viewport()
+        width = float(viewport.width)
+        height = float(viewport.height)
+        if fit is ZoomFit.WIDTH:
+            return width / rect.width()
+        return min(width / rect.width(), height / rect.height())
+
+    def _apply_zoom(self, ratio: float) -> None:
+        """Show the scene at `ratio`, with its middle still in view."""
+        middle = self.roi_view.map_to_scene(
+            self.roi_view.viewport().rect.center())
+        self.roi_view.reset_transform()
+        self.roi_view.scale(ratio, ratio)
+        self.roi_view.center_on(middle)
+        self._zoom_ratio = ratio
+        self._update_zoom_box()
+
+    def _update_zoom_box(self) -> None:
+        """Show what the view is doing in the zoom box."""
+        if self._zoom_fit is None:
+            self.zoom_box.show_ratio(self._zoom_ratio)
+            return
+        self.zoom_box.show_fit(self._zoom_fit, self._zoom_ratio)
+
     # Drawing a shape
 
     def _add_line(self) -> None:
@@ -575,6 +647,10 @@ class MainWindow(QMainWindow):
         active = QApplication.active_window()
         if (active is not None and active is not self
                 and active is not self.coords_input):
+            return False
+        focus = QApplication.focus_widget()
+        if focus is not None and self.zoom_box.is_ancestor_of(focus):
+            # The zoom box is typing a percentage of its own.
             return False
         key = event.key()
         if key == Qt.Key.Key_Escape:

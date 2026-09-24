@@ -33,6 +33,7 @@ files = [
   "src/pyqt_roi_editor/helpers.py",
   "src/pyqt_roi_editor/roi_graphics_view.py",
   "src/pyqt_roi_editor/coords_input.py",
+  "src/pyqt_roi_editor/zoom_box.py",
   "src/pyqt_roi_editor/shape_props_editor.py",
   "src/pyqt_roi_editor/dump_shape_dialog.py",
   # UI files
