@@ -158,6 +158,20 @@ def test_the_palette_opens_even_when_the_menu_holds_the_focus(
     assert window.coords_input.ui.coords_edit.text == "5"
 
 
+def test_the_palette_is_drawn_over_the_view(window) -> None:
+    viewport = window.roi_view.viewport()
+    origin = viewport.map_to(window, QPoint(0, 0))
+    spot = QPoint(origin.x() + 150, origin.y() + 100)
+    before = window.grab().to_image().pixel_color(spot)
+    QCursor.set_pos(viewport.map_to_global(QPoint(150, 100)))
+    window.ui.action_add_line.trigger()
+    press(window, Qt.Key.Key_1)
+    after = window.grab().to_image().pixel_color(spot)
+    assert window.coords_input.visible
+    assert window.coords_input.pos == QPoint(150, 100)
+    assert after != before
+
+
 def test_the_palette_opens_where_the_pointer_is(window) -> None:
     viewport = window.roi_view.viewport()
     target = QPoint(viewport.width // 3, viewport.height // 3)

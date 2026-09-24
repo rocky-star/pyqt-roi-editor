@@ -9,7 +9,7 @@ __all__ = ['CoordsInput', 'parse_coords']
 
 import re
 
-from PySide6.QtCore import QCoreApplication, QPoint, QPointF, Signal
+from PySide6.QtCore import QCoreApplication, QPoint, QPointF, Qt, Signal
 from PySide6.QtWidgets import QToolTip, QWidget
 
 from pyqt_roi_editor.ui_coordsinput import Ui_CoordsInput
@@ -90,6 +90,16 @@ class CoordsInput(QWidget):
         super().__init__(parent)
         self.ui = Ui_CoordsInput()
         self.ui.setupUi(self)  # pyright: ignore[reportUnknownMemberType]
+        # A plain child widget paints nothing of its own, which would
+        # leave a bare field and two buttons floating on the dark
+        # view; the sheet gives the bar a surface and an edge.
+        self.object_name = 'coords_input'
+        self.set_attribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.style_sheet = (
+            '#coords_input {'
+            ' background-color: palette(base);'
+            ' border: 1px solid palette(mid);'
+            '}')
         self.ui.accept_button.clicked.connect(self.accept)
         self.ui.reject_button.clicked.connect(self._reject)
         # A child widget is shown together with its parent, and this
