@@ -505,17 +505,10 @@ class MainWindow(QMainWindow):
             self._scene.add_item(handle)
 
     def _update_title(self) -> None:
-        """Show the document and the application in the title bar.
-
-        The name of the file is shown without the extension the
-        format gives it, which every document of the editor carries
-        and which the title has no room to spare for.
-        """
-        path = self._document.path
-        name = path.stem if path is not None else self.__tr("Untitled")
+        """Show the document and the application in the title bar."""
         self.window_title = qformat(
             self.__tr("%1 - %2"),
-            [name, QCoreApplication.application_name])
+            [self._document_name(), QCoreApplication.application_name])
 
     def _update_action_states(self) -> None:
         """Enable each action whose target currently exists."""
@@ -1105,7 +1098,7 @@ class MainWindow(QMainWindow):
         if shape is None:
             return
         answer = QMessageBox.question(
-            self, self.__tr("Remove Shape"),
+            self, self._document_name(),
             qformat(self.__tr("Remove shape %1?"), [shape.name]))
         if answer != QMessageBox.StandardButton.Yes:
             return
@@ -1173,7 +1166,7 @@ class MainWindow(QMainWindow):
         image = QImage(path)
         if image.is_null():
             QMessageBox.critical(
-                self, self.__tr("Add Basemap"),
+                self, self._document_name(),
                 qformat(self.__tr("Cannot load %1"), [Path(path).name]))
             return
         self._image_directory = Path(path).parent
@@ -1205,7 +1198,7 @@ class MainWindow(QMainWindow):
             return
         basemap = self._document.basemaps[index]
         answer = QMessageBox.question(
-            self, self.__tr("Remove Basemap"),
+            self, self._document_name(),
             qformat(self.__tr("Remove basemap %1?"), [basemap.name]))
         if answer != QMessageBox.StandardButton.Yes:
             return
@@ -1248,6 +1241,21 @@ class MainWindow(QMainWindow):
 
     # Documents
 
+    def _document_name(self) -> str:
+        """Return the name the document is shown by.
+
+        It is the name of the file the document is saved in, without
+        the extension every document of the format shares, and a
+        document that has not been saved yet goes by the name of the
+        untitled one.  The title bar and every message box that
+        speaks of the document rather than of another file are shown
+        under it.
+        """
+        path = self._document.path
+        if path is None:
+            return self.__tr("Untitled")
+        return path.stem
+
     def _new_document(self) -> None:
         """Throw the document away and start over."""
         if not self._maybe_discard():
@@ -1259,7 +1267,7 @@ class MainWindow(QMainWindow):
         if not self._maybe_discard():
             return
         path, _selected = QFileDialog.get_open_file_name(
-            self, self.__tr("Open Document"),
+            self, self.__tr("Open"),
             self._start_directory(self._document_directory),
             qformat(self.__tr("ROI Files (%1)"), [_ROI_PATTERNS]))
         if not path:
@@ -1283,8 +1291,13 @@ class MainWindow(QMainWindow):
         try:
             document = load_document(path)
         except StorageError as error:
+            # The file that could not be read is not the one being
+            # edited, which the document is named by everywhere else,
+            # so this message speaks under the application instead.
             QMessageBox.critical(
-                self, self.__tr("Open Document"),
+                self,
+                # pyrefly: ignore[bad-argument-type]
+                QCoreApplication.application_name,
                 qformat(
                     self.__tr("Cannot open %1: %2"),
                     [path.name, str(error)]))
@@ -1317,7 +1330,7 @@ class MainWindow(QMainWindow):
         suggestion = self._document.basename or (
             self.__tr("Untitled") + '.rsroi')
         path, _selected = QFileDialog.get_save_file_name(
-            self, self.__tr("Save Document"),
+            self, self.__tr("Save As"),
             str(Path(self._start_directory(self._document_directory))
                 / suggestion),
             qformat(self.__tr("ROI Files (%1)"), [_ROI_PATTERNS]))
@@ -1349,7 +1362,7 @@ class MainWindow(QMainWindow):
             save_document(self._document, path)
         except StorageError as error:
             QMessageBox.critical(
-                self, self.__tr("Save Document"),
+                self, self._document_name(),
                 qformat(
                     self.__tr("Cannot save %1: %2"),
                     [path.name, str(error)]))
@@ -1366,7 +1379,7 @@ class MainWindow(QMainWindow):
         if self._document.is_empty:
             return True
         answer = QMessageBox.question(
-            self, self.__tr("Discard Document"),
+            self, self._document_name(),
             self.__tr("Discard the current document?"))
         return answer == QMessageBox.StandardButton.Yes
 

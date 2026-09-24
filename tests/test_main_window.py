@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
     QGraphicsPathItem,
+    QInputDialog,
     QListView,
     QMenu,
     QMessageBox,
@@ -184,6 +185,40 @@ def capture_about(monkeypatch) -> list[str]:
         shown.append(text)
 
     monkeypatch.setattr(QMessageBox, 'about', staticmethod(record))
+    return shown
+
+
+def capture_titles(monkeypatch) -> list[str]:
+    """Record the title every common dialog is given, and cancel it."""
+    titles: list[str] = []
+
+    def record(parent, caption, *args):
+        titles.append(caption)
+        return ('', '')
+
+    def record_text(parent, caption, *args):
+        titles.append(caption)
+        return ('', False)
+
+    monkeypatch.setattr(
+        QFileDialog, 'get_open_file_name', staticmethod(record))
+    monkeypatch.setattr(
+        QFileDialog, 'get_save_file_name', staticmethod(record))
+    monkeypatch.setattr(
+        QInputDialog, 'get_text', staticmethod(record_text))
+    return titles
+
+
+def capture_messages(monkeypatch) -> list[tuple[str, str]]:
+    """Record the title and text of every message box, agreeing to it."""
+    shown: list[tuple[str, str]] = []
+
+    def record(parent, title, text, *args, **kwargs):
+        shown.append((title, text))
+        return QMessageBox.StandardButton.Yes
+
+    for name in ('critical', 'information', 'question'):
+        monkeypatch.setattr(QMessageBox, name, staticmethod(record))
     return shown
 
 
@@ -878,6 +913,85 @@ def test_a_file_dialog_starts_in_the_documents_folder(
     blank_window.ui.action_open.trigger()
     blank_window.ui.action_add_basemap.trigger()
     assert asked == [documents_folder()] * 2
+
+
+def test_a_file_dialog_is_titled_after_its_command(
+        blank_window, monkeypatch) -> None:
+    """A common dialog takes the name of the command that opened it."""
+    titles = capture_titles(monkeypatch)
+    blank_window.ui.action_open.trigger()
+    blank_window.ui.action_save_as.trigger()
+    blank_window.ui.action_add_basemap.trigger()
+    assert titles == ["Open", "Save As", "Add Basemap"]
+
+
+def test_a_rename_dialog_is_titled_after_its_command(
+        window, monkeypatch) -> None:
+    titles = capture_titles(monkeypatch)
+    window.ui.action_rename_basemap.trigger()
+    assert titles == ["Rename Basemap"]
+
+
+def test_a_confirmation_is_titled_after_the_document(
+        window, monkeypatch, tmp_path) -> None:
+    """A message box speaks under the document it belongs to."""
+    draw_polygon(window)
+    shown = capture_messages(monkeypatch)
+    window._maybe_discard()
+    assert window.save_path(tmp_path / 'plot.rsroi')
+    window._maybe_discard()
+    assert shown == [
+        ("Untitled", "Discard the current document?"),
+        ("plot", "Discard the current document?")]
+
+
+def test_a_removal_is_titled_after_the_document(
+        window, monkeypatch, tmp_path) -> None:
+    """A message about the document speaks under the file it is in."""
+    draw_polygon(window)
+    assert window.save_path(tmp_path / 'plot.rsroi')
+    shown = capture_messages(monkeypatch)
+    window.ui.action_remove_shape.trigger()
+    window.ui.action_remove_basemap.trigger()
+    assert shown == [
+        ("plot", "Remove shape Shape 1?"),
+        ("plot", "Remove basemap map?")]
+
+
+def test_a_failed_read_speaks_under_the_application(
+        window, monkeypatch, tmp_path) -> None:
+    """The file that failed is not the document being edited."""
+    broken = tmp_path / 'broken.rsroi'
+    broken.write_text('not an archive', encoding='utf-8')
+    shown = capture_messages(monkeypatch)
+    assert not window.load_path(broken)
+    assert shown[0][0] == APPLICATION_NAME
+    # The file it could not read is named in the message itself.
+    assert shown[0][1].startswith("Cannot open broken.rsroi:")
+
+
+def test_a_failed_save_is_titled_after_the_document(
+        window, monkeypatch, tmp_path) -> None:
+    draw_polygon(window)
+    shown = capture_messages(monkeypatch)
+    assert not window.save_path(tmp_path / 'gone' / 'plot.rsroi')
+    assert window.save_path(tmp_path / 'plot.rsroi')
+    assert not window.save_path(tmp_path / 'gone' / 'other.rsroi')
+    assert [title for title, _text in shown] == ["Untitled", "plot"]
+    assert shown[0][1].startswith("Cannot save plot.rsroi:")
+    assert shown[1][1].startswith("Cannot save other.rsroi:")
+
+
+def test_a_failed_image_load_is_titled_after_the_document(
+        window, monkeypatch, tmp_path) -> None:
+    broken = tmp_path / 'not-an-image.png'
+    broken.write_text('not an image', encoding='utf-8')
+    monkeypatch.setattr(
+        QFileDialog, 'get_open_file_name',
+        staticmethod(lambda *args, **kwargs: (str(broken), '')))
+    shown = capture_messages(monkeypatch)
+    window.ui.action_add_basemap.trigger()
+    assert shown == [("Untitled", "Cannot load not-an-image.png")]
 
 
 def test_a_file_dialog_starts_where_the_last_document_was_saved(
