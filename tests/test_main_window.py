@@ -687,6 +687,13 @@ def test_the_shape_tree_lists_the_vertices(window) -> None:
     assert model.item(0).child(0, 2).text() == "10"
 
 
+def test_the_shape_tree_names_every_vertex(window) -> None:
+    draw_polygon(window)
+    shape_row = window.shapes_view.model().item(0)
+    assert [shape_row.child(row, 0).text() for row in range(3)] == [
+        "Vertex 1", "Vertex 2", "Vertex 3"]
+
+
 def test_a_line_is_kept_once_both_of_its_ends_are_given(window) -> None:
     window.ui.action_add_line.trigger()
     window.roi_view.clicked.emit(QPointF(1, 2))

@@ -244,8 +244,16 @@ class MainWindow(QMainWindow):
             QAbstractItemView.EditTrigger.NoEditTriggers)
         self.shapes_view.context_menu_policy = (
             Qt.ContextMenuPolicy.CustomContextMenu)
-        self.shapes_view.header().set_section_resize_mode(
-            QHeaderView.ResizeMode.Stretch)
+        # The names of a shape and of its vertices are longer than
+        # the two numbers beside them, so that column takes what it
+        # needs and the numbers share what is left.
+        header = self.shapes_view.header()
+        header.set_section_resize_mode(
+            0, QHeaderView.ResizeMode.ResizeToContents)
+        header.set_section_resize_mode(
+            1, QHeaderView.ResizeMode.Stretch)
+        header.set_section_resize_mode(
+            2, QHeaderView.ResizeMode.Stretch)
         self.dock_shapes = QDockWidget(self.__tr("Shapes"), self)
         self.dock_shapes.object_name = 'dock_shapes'
         self.dock_shapes.set_widget(self.shapes_view)
@@ -378,9 +386,10 @@ class MainWindow(QMainWindow):
             top = QStandardItem(shape.name)
             top.set_data(shape, Qt.ItemDataRole.UserRole)
             top.set_editable(False)
-            for vertex in shape.vertices:
+            for number, vertex in enumerate(shape.vertices, start=1):
                 items = [
-                    QStandardItem(''),
+                    QStandardItem(qformat(
+                        self.__tr("Vertex %1"), [number])),
                     QStandardItem(format_number(vertex.x())),
                     QStandardItem(format_number(vertex.y())),
                 ]
