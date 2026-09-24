@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# PySide6 stub files
+typings/PySide6/
+typings/__feature__.pyi
+# Compiled UI files
+ui_*.py

@@ -7,11 +7,46 @@ authors = [
   { name = "Rocky☆Star", email = "rocky-star22@outlook.com" }
 ]
 requires-python = ">= 3.12"
-dependencies = []
+dependencies = [
+  "pyside6 >= 6.11.2",
+]
 
 [project.scripts]
-pyqt-roi-editor = "pyqt_roi_editor:main"
+pyqt-roi-editor = "pyqt_roi_editor.main:main"
 
 [build-system]
 requires = [ "uv_build >= 0.12.17, < 0.13.0" ]
 build-backend = "uv_build"
+
+[tool.pyside6-project]
+files = [
+  # Python modules
+  "src/pyqt_roi_editor/__init__.py",
+  "src/pyqt_roi_editor/main.py",
+  "src/pyqt_roi_editor/helpers.py",
+  # UI files
+  "src/pyqt_roi_editor/mainwindow.ui",
+  "src/pyqt_roi_editor/shapepropseditor.ui",
+  "src/pyqt_roi_editor/dumpshapedialog.ui",
+  "src/pyqt_roi_editor/coordsinput.ui",
+]
+
+[tool.pyright]
+include = [ "src" ]
+ignore = [ "**/ui_*.py" ]
+reportMissingModuleSource = "none"
+reportIncompatibleUnannotatedOverride = "error"
+reportUnannotatedClassAttribute = "none"
+
+[tool.ruff.lint.isort]
+section-order = [
+  "future",
+  "standard-library",
+  "third-party",
+  "first-party",
+  "local-folder",
+  "pyside-feature",
+]
+
+[tool.ruff.lint.isort.sections]
+pyside-feature = [ "__feature__" ]
