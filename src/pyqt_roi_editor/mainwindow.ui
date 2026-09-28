@@ -69,10 +69,19 @@
     <addaction name="action_about"/>
     <addaction name="action_about_qt"/>
    </widget>
+   <widget class="QMenu" name="menu_toolbox">
+    <property name="title">
+     <string>&amp;Toolbox</string>
+    </property>
+    <addaction name="action_selection_tool"/>
+    <addaction name="action_hand_tool"/>
+    <addaction name="action_zoom_tool"/>
+   </widget>
    <addaction name="menu_file"/>
    <addaction name="menu_basemap"/>
    <addaction name="menu_shape"/>
    <addaction name="menu_vertex"/>
+   <addaction name="menu_toolbox"/>
    <addaction name="menu_help"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
@@ -168,6 +177,33 @@
   <action name="action_about_qt">
    <property name="text">
     <string>About &amp;Qt</string>
+   </property>
+  </action>
+  <action name="action_selection_tool">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Selection</string>
+   </property>
+  </action>
+  <action name="action_hand_tool">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Hand</string>
+   </property>
+  </action>
+  <action name="action_zoom_tool">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Zoom</string>
    </property>
   </action>
  </widget>

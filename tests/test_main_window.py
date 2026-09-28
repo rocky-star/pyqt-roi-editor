@@ -9,10 +9,19 @@ from PySide6.QtCore import (
     QEvent,
     QPoint,
     QPointF,
+    QRect,
+    QSize,
     QStandardPaths,
     Qt,
 )
-from PySide6.QtGui import QColor, QCursor, QGuiApplication, QImage, QKeyEvent
+from PySide6.QtGui import (
+    QColor,
+    QCursor,
+    QEnterEvent,
+    QGuiApplication,
+    QImage,
+    QKeyEvent,
+)
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -35,7 +44,7 @@ from pyqt_roi_editor.main import (
     MainWindow,
     installed_version,
 )
-from pyqt_roi_editor.roi_graphics_view import ROIGraphicsView
+from pyqt_roi_editor.roi_graphics_view import ROIGraphicsView, Tool
 from pyqt_roi_editor.shape_props_editor import ShapePropsEditor
 from pyqt_roi_editor.storage import save_document
 from pyqt_roi_editor.zoom_box import ZoomBox, ZoomFit
@@ -115,6 +124,14 @@ def menu_entries(menu: QMenu) -> list[str]:
 def press(window: MainWindow, key: Qt.Key) -> None:
     """Press `key` on the window, as the keyboard would."""
     QTest.key_click(window, key)
+
+
+def point_into_view(window: MainWindow, inside: bool = True) -> None:
+    """Tell the window the pointer has come over the canvas, or gone."""
+    if inside:
+        window.roi_view.pointer_entered.emit()
+    else:
+        window.roi_view.pointer_left.emit()
 
 
 def digit_event(key: Qt.Key) -> QKeyEvent:
@@ -342,6 +359,286 @@ def test_the_zoom_box_names_the_mode_the_view_follows(window) -> None:
         'Fit Width')
     window.zoom_box.fit_requested.emit(ZoomFit.WINDOW)
     assert window.zoom_box.line_edit().text == 'Fit Window'
+
+
+def test_the_tools_of_the_toolbox_exclude_one_another(window) -> None:
+    """The three tools are the members of one exclusive group."""
+    group = window.tool_group
+    assert [action.text for action in group.actions()] == [
+        "&Selection", "&Hand", "&Zoom"]
+    assert group.is_exclusive()
+    assert window.ui.action_selection_tool.checked
+    window.ui.action_hand_tool.trigger()
+    assert window.ui.action_hand_tool.checked
+    assert not window.ui.action_selection_tool.checked
+    assert window.roi_view.tool is Tool.HAND
+    window.ui.action_zoom_tool.trigger()
+    assert not window.ui.action_hand_tool.checked
+    assert window.roi_view.tool is Tool.ZOOM
+    window.ui.action_selection_tool.trigger()
+    assert window.roi_view.tool is Tool.SELECTION
+
+
+def test_the_view_tools_explain_themselves(window) -> None:
+    point_into_view(window)
+    status = window.ui.statusbar
+    selection = "Click a shape to select it; drag it or a handle to move it."
+    assert status.current_message() == selection
+    window.ui.action_hand_tool.trigger()
+    assert status.current_message() == (
+        "Drag to move the view; the middle button does this in any tool.")
+    window.ui.action_zoom_tool.trigger()
+    assert status.current_message() == (
+        "Drag left to zoom out and right to zoom in; drag a box with"
+        + " the right button to fill the view with it.")
+    window.ui.action_selection_tool.trigger()
+    assert status.current_message() == selection
+
+
+def test_a_tool_hint_is_only_shown_over_the_canvas(window) -> None:
+    """The status bar says nothing of a canvas the pointer is off."""
+    status = window.ui.statusbar
+    window.ui.action_hand_tool.trigger()
+    assert status.current_message() == ""
+    point_into_view(window)
+    assert status.current_message() == (
+        "Drag to move the view; the middle button does this in any tool.")
+    point_into_view(window, inside=False)
+    assert status.current_message() == ""
+    # The tool is changed while the pointer is somewhere else.
+    window.ui.action_zoom_tool.trigger()
+    assert status.current_message() == ""
+    point_into_view(window)
+    assert status.current_message() == (
+        "Drag left to zoom out and right to zoom in; drag a box with"
+        + " the right button to fill the view with it.")
+
+
+def test_the_pointer_coming_over_the_canvas_shows_the_hint(window) -> None:
+    """The view reports the pointer, and the window answers with it."""
+    window.ui.action_hand_tool.trigger()
+    status = window.ui.statusbar
+    assert status.current_message() == ""
+    view = window.roi_view
+    spot = QPointF(5, 5)
+    QApplication.send_event(view, QEnterEvent(spot, spot, spot))
+    assert status.current_message() == (
+        "Drag to move the view; the middle button does this in any tool.")
+    QApplication.send_event(view, QEvent(QEvent.Type.Leave))
+    assert status.current_message() == ""
+
+
+def test_a_message_gives_way_to_the_hint(
+        window, monkeypatch, tmp_path, qapp) -> None:
+    """A message about the document is replaced by the canvas hint."""
+    point_into_view(window)
+    monkeypatch.setattr('pyqt_roi_editor.main._HINT_TIMEOUT', 10)
+    assert window.save_path(tmp_path / 'doc.rsroi')
+    assert window.ui.statusbar.current_message() == "Saved doc.rsroi"
+    QTest.q_wait(50)
+    assert window.ui.statusbar.current_message() == (
+        "Click a shape to select it; drag it or a handle to move it.")
+
+
+def test_a_message_leaves_the_status_bar_quiet_off_the_canvas(
+        window, monkeypatch, tmp_path, qapp) -> None:
+    monkeypatch.setattr('pyqt_roi_editor.main._HINT_TIMEOUT', 10)
+    window.ui.action_hand_tool.trigger()
+    assert window.save_path(tmp_path / 'doc.rsroi')
+    assert window.ui.statusbar.current_message() == "Saved doc.rsroi"
+    QTest.q_wait(50)
+    assert window.ui.statusbar.current_message() == ""
+
+
+def test_the_middle_button_borrows_the_hand_tool(window) -> None:
+    """The toolbox and the status bar show the tool being used."""
+    point_into_view(window)
+    window.ui.action_zoom_tool.trigger()
+    view = window.roi_view
+    middle = Qt.MouseButton.MiddleButton
+    spot = view.viewport().rect.center()
+    QTest.mouse_press(view.viewport(), middle, pos=spot)
+    assert window.ui.action_hand_tool.checked
+    assert not window.ui.action_zoom_tool.checked
+    assert window.ui.statusbar.current_message() == (
+        "Drag to move the view; the middle button does this in any tool.")
+    QTest.mouse_release(view.viewport(), middle, pos=spot)
+    assert window.ui.action_zoom_tool.checked
+    assert not window.ui.action_hand_tool.checked
+    assert window.ui.statusbar.current_message() == (
+        "Drag left to zoom out and right to zoom in; drag a box with"
+        + " the right button to fill the view with it.")
+
+
+def test_the_middle_button_leaves_a_shape_being_drawn_alone(window) -> None:
+    """The hint of a shape being drawn outlasts a borrowed tool."""
+    window.ui.action_add_polygon.trigger()
+    view = window.roi_view
+    drawing = window.ui.statusbar.current_message()
+    middle = Qt.MouseButton.MiddleButton
+    spot = view.viewport().rect.center()
+    QTest.mouse_press(view.viewport(), middle, pos=spot)
+    assert window.ui.statusbar.current_message() == drawing
+    assert not window.ui.action_hand_tool.checked
+    QTest.mouse_release(view.viewport(), middle, pos=spot)
+    assert window.ui.statusbar.current_message() == drawing
+    assert window.ui.action_selection_tool.checked
+
+
+def test_the_cursor_shows_what_the_left_button_does(window) -> None:
+    assert window.roi_view.cursor.shape() is Qt.CursorShape.ArrowCursor
+    window.ui.action_hand_tool.trigger()
+    assert window.roi_view.cursor.shape() is Qt.CursorShape.OpenHandCursor
+    window.ui.action_zoom_tool.trigger()
+    assert window.roi_view.cursor.shape() is Qt.CursorShape.SizeHorCursor
+
+
+def test_a_shape_being_drawn_takes_the_left_button(window) -> None:
+    """Drawing gives way to no tool, and the tool comes back after."""
+    window.ui.action_hand_tool.trigger()
+    window.ui.action_add_polygon.trigger()
+    assert window.roi_view.tool is Tool.SELECTION
+    assert window.roi_view.cursor.shape() is Qt.CursorShape.CrossCursor
+    window.roi_view.clicked.emit(QPointF(10, 10))
+    draft = window._draft
+    assert draft is not None
+    assert [(p.x(), p.y()) for p in draft.vertices] == [(10.0, 10.0)]
+    press(window, Qt.Key.Key_Escape)
+    assert window.roi_view.tool is Tool.HAND
+    assert window.roi_view.cursor.shape() is Qt.CursorShape.OpenHandCursor
+
+
+def test_choosing_a_tool_gives_up_the_shape_being_drawn(window) -> None:
+    window.ui.action_add_polygon.trigger()
+    window.roi_view.clicked.emit(QPointF(10, 10))
+    assert window._mode is EditMode.CREATE_SHAPE
+    window.ui.action_zoom_tool.trigger()
+    assert window._mode is EditMode.NONE
+    assert window._draft is None
+
+
+def test_a_new_document_keeps_the_tool(window) -> None:
+    window.ui.action_hand_tool.trigger()
+    window._adopt_document(Document())
+    assert window.roi_view.tool is Tool.HAND
+    assert window.roi_view.cursor.shape() is Qt.CursorShape.OpenHandCursor
+
+
+def test_the_hand_tool_moves_the_view(window) -> None:
+    """A drag of the hand tool moves the view, not the shape under it."""
+    draw_square(window)
+    window._zoom_to_ratio(8.0)
+    window.ui.action_hand_tool.trigger()
+    view = window.roi_view
+    bar = view.horizontal_scroll_bar()
+    before = bar.value
+    start = view.map_from_scene(QPointF(30, 30))
+    QTest.mouse_press(view.viewport(), Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouse_move(view.viewport(), start + QPoint(40, 0))
+    QTest.mouse_release(view.viewport(), Qt.MouseButton.LeftButton,
+                        pos=start + QPoint(40, 0))
+    # Moving the view to the right shows what lies to the left of it.
+    assert bar.value == before - 40
+    assert vertices(window) == [
+        (0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)]
+
+
+def test_the_middle_button_moves_the_view_in_any_tool(window) -> None:
+    draw_square(window)
+    window._zoom_to_ratio(8.0)
+    window._select(window.document.shapes[0], 2)
+    view = window.roi_view
+    bar = view.horizontal_scroll_bar()
+    before = bar.value
+    start = view.map_from_scene(QPointF(40, 40))
+    QTest.mouse_press(view.viewport(), Qt.MouseButton.MiddleButton, pos=start)
+    QTest.mouse_move(view.viewport(), start - QPoint(30, 0))
+    QTest.mouse_release(view.viewport(), Qt.MouseButton.MiddleButton,
+                        pos=start - QPoint(30, 0))
+    assert bar.value == before + 30
+    assert vertices(window)[2] == (40.0, 40.0)
+
+
+def test_the_middle_button_moves_the_view_while_drawing(window) -> None:
+    """A shape is drawn over the part of the image the view shows."""
+    window._zoom_to_ratio(8.0)
+    window.ui.action_add_polygon.trigger()
+    window.roi_view.clicked.emit(QPointF(20, 20))
+    view = window.roi_view
+    bar = view.horizontal_scroll_bar()
+    before = bar.value
+    start = view.viewport().rect.center()
+    QTest.mouse_press(view.viewport(), Qt.MouseButton.MiddleButton, pos=start)
+    QTest.mouse_move(view.viewport(), start + QPoint(25, 0))
+    QTest.mouse_release(view.viewport(), Qt.MouseButton.MiddleButton,
+                        pos=start + QPoint(25, 0))
+    assert bar.value == before - 25
+    draft = window._draft
+    assert draft is not None
+    assert [(p.x(), p.y()) for p in draft.vertices] == [(20.0, 20.0)]
+
+
+def test_the_zoom_tool_scales_the_view_with_a_drag(window) -> None:
+    window.ui.action_zoom_tool.trigger()
+    window._zoom_to_ratio(1.0)
+    view = window.roi_view
+    start = view.viewport().rect.center()
+    QTest.mouse_press(view.viewport(), Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouse_move(view.viewport(), start + QPoint(120, 0))
+    QTest.mouse_release(view.viewport(), Qt.MouseButton.LeftButton,
+                        pos=start + QPoint(120, 0))
+    assert window._zoom_ratio == pytest.approx(2.0)
+    assert window.zoom_box.line_edit().text == "200%"
+    QTest.mouse_press(view.viewport(), Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouse_move(view.viewport(), start - QPoint(120, 0))
+    QTest.mouse_release(view.viewport(), Qt.MouseButton.LeftButton,
+                        pos=start - QPoint(120, 0))
+    assert window._zoom_ratio == pytest.approx(1.0)
+
+
+def test_the_zoom_tool_frames_an_area_with_the_right_button(window) -> None:
+    draw_square(window)
+    window.ui.action_zoom_tool.trigger()
+    window._zoom_to_ratio(2.0)
+    view = window.roi_view
+    area = QRect(view.viewport().rect.center() - QPoint(50, 50),
+                 QSize(100, 100))
+    QTest.mouse_press(view.viewport(), Qt.MouseButton.RightButton,
+                      pos=area.top_left())
+    QTest.mouse_move(view.viewport(), area.bottom_right())
+    QTest.mouse_release(view.viewport(), Qt.MouseButton.RightButton,
+                        pos=area.bottom_right())
+    # The hundred pixels framed cover fifty of the scene at this zoom,
+    # and that is what the view is filled with from now on.
+    framed = 50.0
+    expected = min(view.viewport().width / framed,
+                   view.viewport().height / framed)
+    assert window._zoom_ratio == pytest.approx(expected)
+    assert window._zoom_fit is None
+
+
+def test_a_right_click_of_the_zoom_tool_zooms_into_nothing(window) -> None:
+    window.ui.action_zoom_tool.trigger()
+    window._zoom_to_ratio(2.0)
+    before = window._zoom_ratio
+    view = window.roi_view
+    start = view.viewport().rect.center()
+    QTest.mouse_press(view.viewport(), Qt.MouseButton.RightButton, pos=start)
+    QTest.mouse_release(view.viewport(), Qt.MouseButton.RightButton, pos=start)
+    assert window._zoom_ratio == pytest.approx(before)
+
+
+def test_the_canvas_menu_belongs_to_the_selection_tool(window) -> None:
+    """The tool that takes the right button keeps the menu away."""
+    draw_square(window)
+    spot = window.roi_view.map_from_scene(QPointF(20, 0))
+    for action in (window.ui.action_hand_tool, window.ui.action_zoom_tool):
+        action.trigger()
+        window.roi_view.customContextMenuRequested.emit(spot)
+        assert QApplication.active_popup_widget() is None
+    window.ui.action_selection_tool.trigger()
+    menu = open_menu(window.roi_view, spot)
+    assert window.ui.action_remove_shape in menu.actions()
 
 
 def test_both_docks_hold_the_expected_view(window) -> None:

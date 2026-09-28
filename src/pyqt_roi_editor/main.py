@@ -26,9 +26,11 @@ from PySide6.QtCore import (
     QRectF,
     QStandardPaths,
     Qt,
+    QTimer,
 )
 from PySide6.QtGui import (
     QAction,
+    QActionGroup,
     QBrush,
     QCloseEvent,
     QColor,
@@ -68,7 +70,7 @@ from pyqt_roi_editor.coords_input import CoordsInput
 from pyqt_roi_editor.document import Basemap, Document, Shape, ShapeKind
 from pyqt_roi_editor.dump_shape_dialog import DumpShapeDialog
 from pyqt_roi_editor.helpers import format_number, qformat
-from pyqt_roi_editor.roi_graphics_view import ROIGraphicsView
+from pyqt_roi_editor.roi_graphics_view import ROIGraphicsView, Tool
 from pyqt_roi_editor.shape_props_editor import ShapePropsEditor
 from pyqt_roi_editor.storage import StorageError, load_document, save_document
 from pyqt_roi_editor.ui_mainwindow import Ui_MainWindow
@@ -187,6 +189,10 @@ class MainWindow(QMainWindow):
         self._selected_vertex: int | None = None
         self._drag_origin: QPointF | None = None
         self._drag_base: list[QPointF] | None = None
+        self._tool = Tool.SELECTION
+        self._panning = False
+        self._in_view = False
+        self._mode_hint = ''
         self._basemap_index: int | None = None
         self._basemap_item: QGraphicsPixmapItem | None = None
         self._document_directory: Path | None = None
@@ -200,6 +206,7 @@ class MainWindow(QMainWindow):
         self._build_editor_area()
         self._connect_signals()
         self._fill_action_placeholders()
+        self._choose_tool(Tool.SELECTION)
         self._refresh_all()
 
     @property
@@ -269,6 +276,12 @@ class MainWindow(QMainWindow):
         # a status message never reaches it.
         self.zoom_box = ZoomBox(self)
         self.ui.statusbar.add_permanent_widget(self.zoom_box)
+        # One tool is in force at a time, and the group is what keeps
+        # the three of the toolbox from being chosen together.
+        self.tool_group = QActionGroup(self)
+        self.tool_group.add_action(self.ui.action_selection_tool)
+        self.tool_group.add_action(self.ui.action_hand_tool)
+        self.tool_group.add_action(self.ui.action_zoom_tool)
         # The keys that drive drawing are caught for the whole
         # application: after a menu action the focus sits on the menu
         # bar, so the view never sees them.
@@ -282,6 +295,13 @@ class MainWindow(QMainWindow):
         self.roi_view.dragged.connect(self._on_view_dragged)
         self.roi_view.drag_finished.connect(self._on_view_drag_finished)
         self.roi_view.finish_requested.connect(self._finish_shape)
+        self.roi_view.zoom_requested.connect(self._zoom_to_ratio)
+        self.roi_view.zoom_area_requested.connect(self._zoom_to_area)
+        self.roi_view.pan_started.connect(self._on_view_pan_started)
+        self.roi_view.pan_finished.connect(self._on_view_pan_finished)
+        self.roi_view.pointer_entered.connect(self._on_view_pointer_entered)
+        self.roi_view.pointer_left.connect(self._on_view_pointer_left)
+        self.tool_group.triggered.connect(self._on_tool_chosen)
         self.coords_input.accepted.connect(self._on_coords_accepted)
         self.coords_input.rejected.connect(self._cancel_mode)
         self.zoom_box.ratio_requested.connect(self._zoom_to_ratio)
@@ -617,6 +637,147 @@ class MainWindow(QMainWindow):
         self._update_action_states()
         self._refresh_scene()
 
+    # Tools
+
+    def _on_tool_chosen(self, action: QAction) -> None:
+        """Make the view act with the tool the chosen action names."""
+        if action is self.ui.action_hand_tool:
+            tool = Tool.HAND
+        elif action is self.ui.action_zoom_tool:
+            tool = Tool.ZOOM
+        else:
+            tool = Tool.SELECTION
+        self._choose_tool(tool)
+
+    def _choose_tool(self, tool: Tool) -> None:
+        """Make `tool` what the left button does in the editing area.
+
+        A shape being drawn gives way before it, since the tool takes
+        the left button for itself; the middle button and the zoom
+        box go on working while a shape is drawn.
+        """
+        self._cancel_mode()
+        self._tool = tool
+        self._update_view_tool()
+        self._update_cursor()
+        self._update_tool_choice()
+        self._show_hint()
+
+    def _tool_in_force(self) -> Tool:
+        """Return the tool the view is acting with right now.
+
+        The middle button borrows the hand tool for as long as it is
+        held, wherever the toolbox stands, and the toolbox shows that
+        while it lasts.
+        """
+        return Tool.HAND if self._panning else self._tool
+
+    def _action_of_tool(self, tool: Tool) -> QAction:
+        """Return the action of the toolbox that names `tool`."""
+        if tool is Tool.HAND:
+            return self.ui.action_hand_tool
+        if tool is Tool.ZOOM:
+            return self.ui.action_zoom_tool
+        return self.ui.action_selection_tool
+
+    def _update_tool_choice(self) -> None:
+        """Check the toolbox action of the tool in force."""
+        self._action_of_tool(self._tool_in_force()).checked = True
+
+    def _update_view_tool(self) -> None:
+        """Tell the view which tool the left button acts with.
+
+        A shape being drawn takes the left button for itself, so the
+        view reports clicks the way the selection tool does until the
+        drawing is over, whatever the toolbox is set to.
+        """
+        if self._mode is EditMode.NONE:
+            self.roi_view.tool = self._tool
+        else:
+            self.roi_view.tool = Tool.SELECTION
+
+    def _update_cursor(self) -> None:
+        """Show the pointer as what the left button is about to do."""
+        if self._mode is not EditMode.NONE:
+            cursor = Qt.CursorShape.CrossCursor
+        elif self._tool is Tool.HAND:
+            cursor = Qt.CursorShape.OpenHandCursor
+        elif self._tool is Tool.ZOOM:
+            cursor = Qt.CursorShape.SizeHorCursor
+        else:
+            cursor = Qt.CursorShape.ArrowCursor
+        self.roi_view.cursor = cursor
+
+    def _show_hint(self) -> None:
+        """Show what the canvas is doing in the status bar.
+
+        A shape being drawn comes first: its hint is the one that says
+        what the left button does while it is drawn.  The tool in
+        force is explained while the pointer is over the canvas, and
+        the status bar is left to the document while it is not.
+        """
+        if self._mode is not EditMode.NONE:
+            self.ui.statusbar.show_message(self._mode_hint)
+            return
+        if not self._in_view:
+            self.ui.statusbar.clear_message()
+            return
+        tool = self._tool_in_force()
+        if tool is Tool.HAND:
+            hint = self.__tr(
+                "Drag to move the view; the middle button does this"
+                + " in any tool.")
+        elif tool is Tool.ZOOM:
+            hint = self.__tr(
+                "Drag left to zoom out and right to zoom in; drag a box"
+                + " with the right button to fill the view with it.")
+        else:
+            hint = self.__tr(
+                "Click a shape to select it; drag it or a handle to"
+                + " move it.")
+        self.ui.statusbar.show_message(hint)
+
+    def _show_message(self, message: str) -> None:
+        """Show `message` for a while, and then the hint again.
+
+        A message about the document is worth reading and worth
+        replacing afterwards with what the canvas is doing, which
+        `_show_hint` says and the pointer decides.
+        """
+        self.ui.statusbar.show_message(message)
+        QTimer.single_shot(_HINT_TIMEOUT, self, self._show_hint)
+
+    def _on_view_pointer_entered(self) -> None:
+        """Show what the canvas is doing, the pointer having come over."""
+        self._in_view = True
+        self._show_hint()
+
+    def _on_view_pointer_left(self) -> None:
+        """Leave the status bar to the document, the pointer having gone."""
+        self._in_view = False
+        self._show_hint()
+
+    def _on_view_pan_started(self) -> None:
+        """Show the hand tool while the pointer moves the view.
+
+        The middle button lends the tool to the view wherever the
+        toolbox stands; a shape being drawn keeps the status bar for
+        itself, since its hint is the one that counts there.
+        """
+        if self._mode is not EditMode.NONE:
+            return
+        self._panning = True
+        self._update_tool_choice()
+        self._show_hint()
+
+    def _on_view_pan_finished(self) -> None:
+        """Give the toolbox its say back, if it lent it away."""
+        if not self._panning:
+            return
+        self._panning = False
+        self._update_tool_choice()
+        self._show_hint()
+
     # Zooming
 
     def _zoom_to_ratio(self, ratio: float) -> None:
@@ -658,15 +819,33 @@ class MainWindow(QMainWindow):
             return width / rect.width()
         return min(width / rect.width(), height / rect.height())
 
-    def _apply_zoom(self, ratio: float) -> None:
-        """Show the scene at `ratio`, with its middle still in view."""
-        middle = self.roi_view.map_to_scene(
-            self.roi_view.viewport().rect.center())
+    def _apply_zoom(self, ratio: float, middle: QPointF | None = None) -> None:
+        """Show the scene at `ratio`, with `middle` in the middle.
+
+        `middle` is a point of the scene to put in the middle of the
+        viewport; the one already there is kept when none is named,
+        which is what a plain change of scale asks for.
+        """
+        if middle is None:
+            middle = self.roi_view.map_to_scene(
+                self.roi_view.viewport().rect.center())
         self.roi_view.reset_transform()
         self.roi_view.scale(ratio, ratio)
         self.roi_view.center_on(middle)
         self._zoom_ratio = ratio
         self._update_zoom_box()
+
+    def _zoom_to_area(self, area: QRectF) -> None:
+        """Show the scene so that `area` fills the viewport.
+
+        The area is the one the pointer framed with the zoom tool, so
+        the view is scaled to fit it and centred on it.
+        """
+        viewport = self.roi_view.viewport()
+        ratio = min(viewport.width / area.width(),
+                    viewport.height / area.height())
+        self._zoom_fit = None
+        self._apply_zoom(ratio, area.center())
 
     def _update_zoom_box(self) -> None:
         """Show what the view is doing in the zoom box."""
@@ -702,9 +881,12 @@ class MainWindow(QMainWindow):
         """Offer what can be done to what is drawn under `position`.
 
         Empty canvas has nothing to act on, but it is where a shape is
-        drawn, so it offers the shapes that can be started.
+        drawn, so it offers the shapes that can be started.  A tool
+        that takes the left button leaves the right one to itself,
+        which the zoom tool spends on framing an area.
         """
-        if self._mode is not EditMode.NONE:
+        if (self._mode is not EditMode.NONE
+                or self._tool is not Tool.SELECTION):
             return
         self._select_at(self.roi_view.map_to_scene(position))
         menu = self._selection_menu(add_vertex=True)
@@ -784,13 +966,15 @@ class MainWindow(QMainWindow):
     def _enter_mode(self, mode: EditMode, hint: str) -> None:
         """Switch to `mode` and show `hint`."""
         self._mode = mode
+        self._mode_hint = hint
         self._watching = True
         self._drag_origin = None
         self._drag_base = None
         self.coords_input.reset()
-        self.roi_view.cursor = Qt.CursorShape.CrossCursor
+        self._update_view_tool()
+        self._update_cursor()
         self.roi_view.set_focus()
-        self.ui.statusbar.show_message(hint)
+        self._show_hint()
         self._update_action_states()
 
     @override
@@ -897,13 +1081,15 @@ class MainWindow(QMainWindow):
             min(max(pointer.y(), 0), max(area.height() - size.height(), 0)))
 
     def _leave_mode(self) -> None:
-        """Drop the draft, hide the palette and go back to selecting."""
+        """Drop the draft, hide the palette and go back to the tool."""
         self._mode = EditMode.NONE
+        self._mode_hint = ''
         self._watching = False
         self._draft = None
-        self.roi_view.cursor = Qt.CursorShape.ArrowCursor
+        self._update_view_tool()
+        self._update_cursor()
         self.coords_input.reset()
-        self.ui.statusbar.clear_message()
+        self._show_hint()
         self._update_action_states()
         self._refresh_scene()
 
@@ -926,11 +1112,10 @@ class MainWindow(QMainWindow):
         minimum = 3 if draft.closed else 2
         self._leave_mode()
         if len(draft.vertices) < minimum:
-            self.ui.statusbar.show_message(
+            self._show_message(
                 qformat(
                     self.__tr("%1 needs at least %2 vertices."),
-                    [draft.name, minimum]),
-                _HINT_TIMEOUT)
+                    [draft.name, minimum]))
             return
         self._document.shapes.append(draft)
         self._selected_shape = draft
@@ -1314,7 +1499,8 @@ class MainWindow(QMainWindow):
         self._selected_shape = None
         self._selected_vertex = None
         self.coords_input.reset()
-        self.roi_view.cursor = Qt.CursorShape.ArrowCursor
+        self._update_view_tool()
+        self._update_cursor()
         self._document = document
         self._refresh_all()
 
@@ -1371,8 +1557,7 @@ class MainWindow(QMainWindow):
         self._document_directory = path.parent
         self._document.path = path
         self._update_title()
-        self.ui.statusbar.show_message(
-            qformat(self.__tr("Saved %1"), [path.name]), _HINT_TIMEOUT)
+        self._show_message(qformat(self.__tr("Saved %1"), [path.name]))
         return True
 
     def _maybe_discard(self) -> bool:
