@@ -385,8 +385,7 @@ def test_the_view_tools_explain_themselves(window) -> None:
     selection = "Click a shape to select it; drag it or a handle to move it."
     assert status.current_message() == selection
     window.ui.action_hand_tool.trigger()
-    assert status.current_message() == (
-        "Drag to move the view; the middle button does this in any tool.")
+    assert status.current_message() == "Drag to move the view."
     window.ui.action_zoom_tool.trigger()
     assert status.current_message() == (
         "Drag left to zoom out and right to zoom in; drag a box with"
@@ -401,8 +400,7 @@ def test_a_tool_hint_is_only_shown_over_the_canvas(window) -> None:
     window.ui.action_hand_tool.trigger()
     assert status.current_message() == ""
     point_into_view(window)
-    assert status.current_message() == (
-        "Drag to move the view; the middle button does this in any tool.")
+    assert status.current_message() == "Drag to move the view."
     point_into_view(window, inside=False)
     assert status.current_message() == ""
     # The tool is changed while the pointer is somewhere else.
@@ -422,8 +420,7 @@ def test_the_pointer_coming_over_the_canvas_shows_the_hint(window) -> None:
     view = window.roi_view
     spot = QPointF(5, 5)
     QApplication.send_event(view, QEnterEvent(spot, spot, spot))
-    assert status.current_message() == (
-        "Drag to move the view; the middle button does this in any tool.")
+    assert status.current_message() == "Drag to move the view."
     QApplication.send_event(view, QEvent(QEvent.Type.Leave))
     assert status.current_message() == ""
 
@@ -460,8 +457,7 @@ def test_the_middle_button_borrows_the_hand_tool(window) -> None:
     QTest.mouse_press(view.viewport(), middle, pos=spot)
     assert window.ui.action_hand_tool.checked
     assert not window.ui.action_zoom_tool.checked
-    assert window.ui.statusbar.current_message() == (
-        "Drag to move the view; the middle button does this in any tool.")
+    assert window.ui.statusbar.current_message() == "Drag to move the view."
     QTest.mouse_release(view.viewport(), middle, pos=spot)
     assert window.ui.action_zoom_tool.checked
     assert not window.ui.action_hand_tool.checked

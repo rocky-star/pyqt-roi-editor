@@ -724,9 +724,7 @@ class MainWindow(QMainWindow):
             return
         tool = self._tool_in_force()
         if tool is Tool.HAND:
-            hint = self.__tr(
-                "Drag to move the view; the middle button does this"
-                + " in any tool.")
+            hint = self.__tr("Drag to move the view.")
         elif tool is Tool.ZOOM:
             hint = self.__tr(
                 "Drag left to zoom out and right to zoom in; drag a box"
