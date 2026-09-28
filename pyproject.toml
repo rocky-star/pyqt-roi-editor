@@ -6,10 +6,27 @@ readme = "README.rst"
 authors = [
   { name = "Rocky☆Star", email = "rocky-star22@outlook.com" }
 ]
+license = "GPL-3.0-or-later"
+keywords = [ "region of interest", "ROI" ]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Image Processing",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+]
 requires-python = ">= 3.12"
 dependencies = [
   "pyside6 >= 6.11.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/rocky-star/pyqt-roi-editor"
+Issues = "https://github.com/rocky-star/pyqt-roi-editor/issues"
 
 [project.scripts]
 pyqt-roi-editor = "pyqt_roi_editor.main:main"
