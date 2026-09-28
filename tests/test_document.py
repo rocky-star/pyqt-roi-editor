@@ -6,7 +6,7 @@ from PySide6.QtGui import QImage
 
 from pyqt_roi_editor.coords_input import parse_coords
 from pyqt_roi_editor.document import Basemap, Document, Shape, ShapeKind
-from pyqt_roi_editor.dump_shape_dialog import format_compact
+from pyqt_roi_editor.dump_shape_dialog import format_compact, format_expanded
 from pyqt_roi_editor.helpers import format_number
 
 
@@ -45,6 +45,16 @@ def test_format_compact_matches_the_documented_shape() -> None:
 
 def test_format_compact_of_a_shape_without_vertices() -> None:
     assert format_compact(Shape("s")) == "[]"
+
+
+def test_format_expanded_matches_the_documented_shape() -> None:
+    shape = Shape('s', ShapeKind.POLYGON, [
+        QPointF(10, 10), QPointF(20, 20), QPointF(30, 30)])
+    assert format_expanded(shape) == "- [10, 10]\n- [20, 20]\n- [30, 30]"
+
+
+def test_format_expanded_of_a_shape_without_vertices() -> None:
+    assert format_expanded(Shape("s")) == "[]"
 
 
 def test_insert_vertex_appends_while_there_is_no_edge() -> None:

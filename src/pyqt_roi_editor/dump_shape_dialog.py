@@ -1,11 +1,13 @@
 """The dialog dumping a shape's vertices in a textual format.
 
-Only the Compact format exists so far; `_FORMATTERS` is what a second
-one is added to, together with `_FORMAT_NAMES`, so the rest of the
-dialog needs no change.
+The formats offered are the members of `DumpFormat`: the combo box
+lists them in the order they are declared, and `_FORMATTERS` says how
+each of them writes a shape.  A new format is a member, a formatter
+in that mapping, and a name in `DumpShapeDialog.format_name`.
 """
 
-__all__ = ['DumpFormat', 'DumpShapeDialog', 'format_compact']
+__all__ = [
+    'DumpFormat', 'DumpShapeDialog', 'format_compact', 'format_expanded']
 
 import enum
 from collections.abc import Callable
@@ -26,6 +28,7 @@ class DumpFormat(enum.Enum):
     """The textual formats a shape can be dumped in."""
 
     COMPACT = 'compact'
+    EXPANDED = 'expanded'
 
 
 def format_compact(shape: Shape) -> str:
@@ -57,8 +60,45 @@ def format_compact(shape: Shape) -> str:
     return f'[{points}]'
 
 
+def format_expanded(shape: Shape) -> str:
+    """Return the vertices as one ``- [x, y]`` item per line.
+
+    The same vectors the compact format puts on one line, written as
+    the YAML block sequence of them, which can be read and edited a
+    line at a time.  A polygon keeps exactly the vertices it holds;
+    the first one is not repeated at the end.  A vertex with no
+    fractional part is written without one, so a line reads
+    ``- [10, 10]``.
+
+    Parameters
+    ----------
+    shape : Shape
+        The shape to dump.
+
+    Returns
+    -------
+    str
+        The dumped vertices, one per line and without a line ending
+        after the last, and ``[]`` for a shape with no vertex, which
+        is how YAML writes an empty sequence.
+
+    Examples
+    --------
+    >>> shape = Shape('s', vertices=[QPointF(10, 10), QPointF(20, 20)])
+    >>> print(format_expanded(shape))
+    - [10, 10]
+    - [20, 20]
+    """
+    if not shape.vertices:
+        return '[]'
+    return '\n'.join(
+        f'- [{format_number(vertex.x())}, {format_number(vertex.y())}]'
+        for vertex in shape.vertices)
+
+
 _FORMATTERS: dict[DumpFormat, Callable[[Shape], str]] = {
     DumpFormat.COMPACT: format_compact,
+    DumpFormat.EXPANDED: format_expanded,
 }
 
 
@@ -82,7 +122,10 @@ class DumpShapeDialog(QDialog):
 
     def format_name(self, dump_format: DumpFormat) -> str:
         """Return the shown name of `dump_format`."""
-        names = {DumpFormat.COMPACT: self.__tr("Compact")}
+        names = {
+            DumpFormat.COMPACT: self.__tr("Compact"),
+            DumpFormat.EXPANDED: self.__tr("Expanded (YAML)"),
+        }
         return names.get(dump_format, dump_format.value)
 
     def _refresh(self) -> None:

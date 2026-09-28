@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 from pyqt_roi_editor.document import Basemap, Document, ShapeKind
-from pyqt_roi_editor.dump_shape_dialog import DumpShapeDialog
+from pyqt_roi_editor.dump_shape_dialog import DumpFormat, DumpShapeDialog
 from pyqt_roi_editor.main import (
     APPLICATION_NAME,
     EditMode,
@@ -971,11 +971,13 @@ def test_bracketed_coordinates_are_accepted(window) -> None:
     assert window.coords_input.ui.coords_edit.text == ""
 
 
-def test_the_dump_dialog_offers_the_compact_format(window) -> None:
+def test_the_dump_dialog_offers_every_format(window) -> None:
     draw_polygon(window)
     dialog = DumpShapeDialog(window.document.shapes[0], window)
-    assert dialog.ui.format_box.count == 1
-    assert dialog.ui.format_box.current_text == "Compact"
+    box = dialog.ui.format_box
+    assert [box.item_text(index) for index in range(box.count)] == [
+        "Compact", "Expanded (YAML)"]
+    assert box.current_text == "Compact"
 
 
 def test_a_basemap_is_what_makes_drawing_available(window) -> None:
@@ -1143,6 +1145,20 @@ def test_dumping_a_shape_copies_the_compact_text(window) -> None:
     dialog.copy_button.click()
     assert QGuiApplication.clipboard().text() == (
         '[[0, 0], [10, 0], [10, 10]]')
+
+
+def test_dumping_a_shape_copies_the_expanded_text(window) -> None:
+    """The chosen format is the one the output and the copy hold."""
+    draw_polygon(window)
+    dialog = DumpShapeDialog(window.document.shapes[0], window)
+    box = dialog.ui.format_box
+    box.current_index = box.find_data(DumpFormat.EXPANDED)
+    expanded = '- [0, 0]\n- [10, 0]\n- [10, 10]'
+    assert dialog.ui.output_edit.plain_text == expanded
+    dialog.copy_button.click()
+    assert QGuiApplication.clipboard().text() == expanded
+    box.current_index = box.find_data(DumpFormat.COMPACT)
+    assert dialog.ui.output_edit.plain_text == '[[0, 0], [10, 0], [10, 10]]'
 
 
 def test_a_saved_document_round_trips_through_the_window(
