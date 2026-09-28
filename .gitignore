@@ -222,5 +222,7 @@ __marimo__/
 # PySide6 stub files
 typings/PySide6/
 typings/__feature__.pyi
-# Compiled UI files
+# Compiled files
 ui_*.py
+rc_*.py
+*.qm

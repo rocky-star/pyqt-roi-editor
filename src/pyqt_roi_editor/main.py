@@ -20,6 +20,8 @@ from PySide6.QtCore import (
     QCoreApplication,
     QEvent,
     QItemSelectionModel,
+    QLibraryInfo,
+    QLocale,
     QObject,
     QPoint,
     QPointF,
@@ -27,6 +29,7 @@ from PySide6.QtCore import (
     QStandardPaths,
     Qt,
     QTimer,
+    QTranslator,
 )
 from PySide6.QtGui import (
     QAction,
@@ -66,6 +69,7 @@ from PySide6.QtWidgets import (
     QTreeView,
 )
 
+from pyqt_roi_editor import rc_roieditor  # pyright: ignore[reportUnusedImport]
 from pyqt_roi_editor.coords_input import CoordsInput
 from pyqt_roi_editor.document import Basemap, Document, Shape, ShapeKind
 from pyqt_roi_editor.dump_shape_dialog import DumpShapeDialog
@@ -100,6 +104,12 @@ _COORDINATE_KEYS = '0123456789-'
 # an open palette the way the digits are, so that a coordinate may be
 # typed either way wherever the focus happens to be.
 _SEPARATOR_KEYS = ', '
+# The name of the catalogue Qt puts its own wording in, and the name
+# and the resource directory of the compiled translation of the
+# interface, which `roieditor.qrc` stores in the resources.
+_QT_TRANSLATION_NAME = 'qtbase'
+_TRANSLATION_NAME = 'roieditor'
+_TRANSLATION_DIRECTORY = ':/translations'
 
 
 class EditMode(enum.Enum):
@@ -1617,6 +1627,33 @@ def installed_version() -> str:
         return ''
 
 
+def _install_translator(app: QApplication, name: str, directory: str) -> None:
+    """Install the translation of `name` found in `directory`, if any.
+
+    A catalogue that is not there is left out, and the wording it
+    would have given stays in the English of the sources.
+    """
+    translator = QTranslator(app)
+    if translator.load(QLocale.system(), name, '_', directory):
+        app.install_translator(translator)
+
+
+def _install_translations(app: QApplication) -> None:
+    """Show the interface in the language of the system, if known.
+
+    Qt has a catalogue of its own for the wording it brings, that of
+    the buttons of a message box for example, and the editor has one
+    for its menus and messages, which `roieditor.qrc` stores in the
+    resources that importing `rc_roieditor` registers.  The editor is
+    installed last because the translator installed last is the one
+    asked first.
+    """
+    _install_translator(
+        app, _QT_TRANSLATION_NAME,
+        QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath))
+    _install_translator(app, _TRANSLATION_NAME, _TRANSLATION_DIRECTORY)
+
+
 def main() -> None:
     """Run the editor."""
     app = QApplication(sys.argv)
@@ -1624,6 +1661,7 @@ def main() -> None:
     QCoreApplication.application_name = APPLICATION_NAME
     # pyrefly: ignore[bad-assignment]
     QCoreApplication.application_version = installed_version()
+    _install_translations(app)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

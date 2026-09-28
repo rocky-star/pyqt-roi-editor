@@ -41,6 +41,9 @@ files = [
   "src/pyqt_roi_editor/shapepropseditor.ui",
   "src/pyqt_roi_editor/dumpshapedialog.ui",
   "src/pyqt_roi_editor/coordsinput.ui",
+  # Resources (images & translations)
+  "src/pyqt_roi_editor/roieditor.qrc",
+  "src/pyqt_roi_editor/translations/roieditor_zh_CN.ts",
 ]
 
 [tool.pytest.ini_options]
@@ -75,7 +78,9 @@ section-order = [
 pyside-feature = [ "__feature__" ]
 
 [tool.ruff.lint.pyflakes]
-allowed-unused-imports = [ "__feature__" ]
+# `rc_roieditor` is imported to register the resources it holds, and
+# `__feature__` to change the syntax of the module that imports it.
+allowed-unused-imports = [ "__feature__", "pyqt_roi_editor.rc_roieditor" ]
 
 [dependency-groups]
 dev = [
