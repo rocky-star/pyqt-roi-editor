@@ -37,8 +37,24 @@ missing-source-for-stubs = "ignore"
 bad-override-mutable-attribute = "error"
 
 [build-system]
-requires = [ "uv_build >= 0.12.17, < 0.13.0" ]
-build-backend = "uv_build"
+requires = [ "hatchling", "pyside6-essentials >= 6.11.2" ]
+build-backend = "hatchling.build"
+
+# `hatch_build.py` runs `pyside6-project build` before each build, which
+# compiles the forms, resources and translations listed below. The
+# results are ignored by the VCS, so they have to be named as artifacts
+# to reach the distributions.
+[tool.hatch.build]
+artifacts = [
+  "src/pyqt_roi_editor/ui_*.py",
+  "src/pyqt_roi_editor/rc_*.py",
+  "src/pyqt_roi_editor/translations/*.qm",
+]
+
+[tool.hatch.build.hooks.custom]
+
+[tool.hatch.build.targets.wheel]
+packages = [ "src/pyqt_roi_editor" ]
 
 [tool.pyside6-project]
 files = [
