@@ -111,8 +111,8 @@
     </message>
     <message>
         <location filename="../main.py" line="730"/>
-        <source>Drag left to zoom out and right to zoom in; drag a box with the right button to fill the view with it.</source>
-        <translation>向左拖动以缩小，向右拖动以放大；用右键拖出一个方框即可用它填满视图。</translation>
+        <source>Drag left to zoom out and right to zoom in; drag a box with the secondary button to fill the view with it.</source>
+        <translation>向左拖动以缩小，向右拖动以放大；用次要按钮拖出一个方框即可用它填满视图。</translation>
     </message>
     <message>
         <location filename="../main.py" line="734"/>

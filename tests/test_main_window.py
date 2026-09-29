@@ -389,7 +389,7 @@ def test_the_view_tools_explain_themselves(window) -> None:
     window.ui.action_zoom_tool.trigger()
     assert status.current_message() == (
         "Drag left to zoom out and right to zoom in; drag a box with"
-        + " the right button to fill the view with it.")
+        + " the secondary button to fill the view with it.")
     window.ui.action_selection_tool.trigger()
     assert status.current_message() == selection
 
@@ -409,7 +409,7 @@ def test_a_tool_hint_is_only_shown_over_the_canvas(window) -> None:
     point_into_view(window)
     assert status.current_message() == (
         "Drag left to zoom out and right to zoom in; drag a box with"
-        + " the right button to fill the view with it.")
+        + " the secondary button to fill the view with it.")
 
 
 def test_the_pointer_coming_over_the_canvas_shows_the_hint(window) -> None:
@@ -447,41 +447,41 @@ def test_a_message_leaves_the_status_bar_quiet_off_the_canvas(
     assert window.ui.statusbar.current_message() == ""
 
 
-def test_the_middle_button_borrows_the_hand_tool(window) -> None:
+def test_the_third_button_borrows_the_hand_tool(window) -> None:
     """The toolbox and the status bar show the tool being used."""
     point_into_view(window)
     window.ui.action_zoom_tool.trigger()
     view = window.roi_view
-    middle = Qt.MouseButton.MiddleButton
+    third = Qt.MouseButton.MiddleButton
     spot = view.viewport().rect.center()
-    QTest.mouse_press(view.viewport(), middle, pos=spot)
+    QTest.mouse_press(view.viewport(), third, pos=spot)
     assert window.ui.action_hand_tool.checked
     assert not window.ui.action_zoom_tool.checked
     assert window.ui.statusbar.current_message() == "Drag to move the view."
-    QTest.mouse_release(view.viewport(), middle, pos=spot)
+    QTest.mouse_release(view.viewport(), third, pos=spot)
     assert window.ui.action_zoom_tool.checked
     assert not window.ui.action_hand_tool.checked
     assert window.ui.statusbar.current_message() == (
         "Drag left to zoom out and right to zoom in; drag a box with"
-        + " the right button to fill the view with it.")
+        + " the secondary button to fill the view with it.")
 
 
-def test_the_middle_button_leaves_a_shape_being_drawn_alone(window) -> None:
+def test_the_third_button_leaves_a_shape_being_drawn_alone(window) -> None:
     """The hint of a shape being drawn outlasts a borrowed tool."""
     window.ui.action_add_polygon.trigger()
     view = window.roi_view
     drawing = window.ui.statusbar.current_message()
-    middle = Qt.MouseButton.MiddleButton
+    third = Qt.MouseButton.MiddleButton
     spot = view.viewport().rect.center()
-    QTest.mouse_press(view.viewport(), middle, pos=spot)
+    QTest.mouse_press(view.viewport(), third, pos=spot)
     assert window.ui.statusbar.current_message() == drawing
     assert not window.ui.action_hand_tool.checked
-    QTest.mouse_release(view.viewport(), middle, pos=spot)
+    QTest.mouse_release(view.viewport(), third, pos=spot)
     assert window.ui.statusbar.current_message() == drawing
     assert window.ui.action_selection_tool.checked
 
 
-def test_the_cursor_shows_what_the_left_button_does(window) -> None:
+def test_the_cursor_shows_what_the_primary_button_does(window) -> None:
     assert window.roi_view.cursor.shape() is Qt.CursorShape.ArrowCursor
     window.ui.action_hand_tool.trigger()
     assert window.roi_view.cursor.shape() is Qt.CursorShape.OpenHandCursor
@@ -489,7 +489,7 @@ def test_the_cursor_shows_what_the_left_button_does(window) -> None:
     assert window.roi_view.cursor.shape() is Qt.CursorShape.SizeHorCursor
 
 
-def test_a_shape_being_drawn_takes_the_left_button(window) -> None:
+def test_a_shape_being_drawn_takes_the_primary_button(window) -> None:
     """Drawing gives way to no tool, and the tool comes back after."""
     window.ui.action_hand_tool.trigger()
     window.ui.action_add_polygon.trigger()
@@ -539,7 +539,7 @@ def test_the_hand_tool_moves_the_view(window) -> None:
         (0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)]
 
 
-def test_the_middle_button_moves_the_view_in_any_tool(window) -> None:
+def test_the_third_button_moves_the_view_in_any_tool(window) -> None:
     draw_square(window)
     window._zoom_to_ratio(8.0)
     window._select(window.document.shapes[0], 2)
@@ -555,7 +555,7 @@ def test_the_middle_button_moves_the_view_in_any_tool(window) -> None:
     assert vertices(window)[2] == (40.0, 40.0)
 
 
-def test_the_middle_button_moves_the_view_while_drawing(window) -> None:
+def test_the_third_button_moves_the_view_while_drawing(window) -> None:
     """A shape is drawn over the part of the image the view shows."""
     window._zoom_to_ratio(8.0)
     window.ui.action_add_polygon.trigger()
@@ -592,7 +592,8 @@ def test_the_zoom_tool_scales_the_view_with_a_drag(window) -> None:
     assert window._zoom_ratio == pytest.approx(1.0)
 
 
-def test_the_zoom_tool_frames_an_area_with_the_right_button(window) -> None:
+def test_the_zoom_tool_frames_an_area_with_the_secondary_button(
+        window) -> None:
     draw_square(window)
     window.ui.action_zoom_tool.trigger()
     window._zoom_to_ratio(2.0)
@@ -613,7 +614,8 @@ def test_the_zoom_tool_frames_an_area_with_the_right_button(window) -> None:
     assert window._zoom_fit is None
 
 
-def test_a_right_click_of_the_zoom_tool_zooms_into_nothing(window) -> None:
+def test_a_secondary_click_of_the_zoom_tool_zooms_into_nothing(
+        window) -> None:
     window.ui.action_zoom_tool.trigger()
     window._zoom_to_ratio(2.0)
     before = window._zoom_ratio
@@ -625,7 +627,7 @@ def test_a_right_click_of_the_zoom_tool_zooms_into_nothing(window) -> None:
 
 
 def test_the_canvas_menu_belongs_to_the_selection_tool(window) -> None:
-    """The tool that takes the right button keeps the menu away."""
+    """The tool that takes the secondary button keeps the menu away."""
     draw_square(window)
     spot = window.roi_view.map_from_scene(QPointF(20, 0))
     for action in (window.ui.action_hand_tool, window.ui.action_zoom_tool):
@@ -732,7 +734,7 @@ def test_the_tree_menu_of_a_vertex_offers_removing_it(window) -> None:
     assert window._selected_vertex == 1
 
 
-def test_a_right_click_selects_the_shape_it_lands_on(window) -> None:
+def test_a_secondary_click_selects_the_shape_it_lands_on(window) -> None:
     draw_polygon(window)
     window._select(None, None)
     spot = window.roi_view.map_from_scene(QPointF(10, 0))

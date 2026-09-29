@@ -660,10 +660,10 @@ class MainWindow(QMainWindow):
         self._choose_tool(tool)
 
     def _choose_tool(self, tool: Tool) -> None:
-        """Make `tool` what the left button does in the editing area.
+        """Make `tool` what the primary button does in the editing area.
 
         A shape being drawn gives way before it, since the tool takes
-        the left button for itself; the middle button and the zoom
+        the primary button for itself; the third button and the zoom
         box go on working while a shape is drawn.
         """
         self._cancel_mode()
@@ -676,7 +676,7 @@ class MainWindow(QMainWindow):
     def _tool_in_force(self) -> Tool:
         """Return the tool the view is acting with right now.
 
-        The middle button borrows the hand tool for as long as it is
+        The third button borrows the hand tool for as long as it is
         held, wherever the toolbox stands, and the toolbox shows that
         while it lasts.
         """
@@ -695,9 +695,9 @@ class MainWindow(QMainWindow):
         self._action_of_tool(self._tool_in_force()).checked = True
 
     def _update_view_tool(self) -> None:
-        """Tell the view which tool the left button acts with.
+        """Tell the view which tool the primary button acts with.
 
-        A shape being drawn takes the left button for itself, so the
+        A shape being drawn takes the primary button for itself, so the
         view reports clicks the way the selection tool does until the
         drawing is over, whatever the toolbox is set to.
         """
@@ -707,7 +707,7 @@ class MainWindow(QMainWindow):
             self.roi_view.tool = Tool.SELECTION
 
     def _update_cursor(self) -> None:
-        """Show the pointer as what the left button is about to do."""
+        """Show the pointer as what the primary button will do."""
         if self._mode is not EditMode.NONE:
             cursor = Qt.CursorShape.CrossCursor
         elif self._tool is Tool.HAND:
@@ -722,7 +722,7 @@ class MainWindow(QMainWindow):
         """Show what the canvas is doing in the status bar.
 
         A shape being drawn comes first: its hint is the one that says
-        what the left button does while it is drawn.  The tool in
+        what the primary button does while it is drawn.  The tool in
         force is explained while the pointer is over the canvas, and
         the status bar is left to the document while it is not.
         """
@@ -738,7 +738,7 @@ class MainWindow(QMainWindow):
         elif tool is Tool.ZOOM:
             hint = self.__tr(
                 "Drag left to zoom out and right to zoom in; drag a box"
-                + " with the right button to fill the view with it.")
+                + " with the secondary button to fill the view with it.")
         else:
             hint = self.__tr(
                 "Click a shape to select it; drag it or a handle to"
@@ -768,7 +768,7 @@ class MainWindow(QMainWindow):
     def _on_view_pan_started(self) -> None:
         """Show the hand tool while the pointer moves the view.
 
-        The middle button lends the tool to the view wherever the
+        The third button lends the tool to the view wherever the
         toolbox stands; a shape being drawn keeps the status bar for
         itself, since its hint is the one that counts there.
         """
@@ -890,8 +890,8 @@ class MainWindow(QMainWindow):
 
         Empty canvas has nothing to act on, but it is where a shape is
         drawn, so it offers the shapes that can be started.  A tool
-        that takes the left button leaves the right one to itself,
-        which the zoom tool spends on framing an area.
+        that takes the primary button leaves the secondary one to
+        itself, which the zoom tool spends on framing an area.
         """
         if (self._mode is not EditMode.NONE
                 or self._tool is not Tool.SELECTION):

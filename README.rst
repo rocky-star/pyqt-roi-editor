@@ -50,11 +50,12 @@ Editing
   which typing such a coordinate turns on by itself.
 
 Navigating
-  The *Toolbox* menu chooses what the left mouse button does: select and
-  move shapes, move the view, or zoom it.  The middle button moves the
+  The *Toolbox* menu chooses what the primary button does: select and
+  move shapes, move the view, or zoom it.  The third button moves the
   view whatever the tool is, the zoom tool fills the view with an area
-  framed by the right button, and the status bar zoom box takes a preset,
-  a typed percentage such as ``149%``, or a fit to the width or window.
+  framed by the secondary button, and the status bar zoom box takes a
+  preset, a typed percentage such as ``149%``, or a fit to the width or
+  window.
 
 Dumping
   *Shape > Dump Shape* writes the vertices of a shape as a compact list,

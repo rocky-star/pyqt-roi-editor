@@ -6,9 +6,9 @@ to the main window.  The keyboard is watched by the window itself,
 because a menu holds the focus for long enough that the view cannot
 be relied on to receive it.
 
-What the left mouse button does follows the tool the window has put
-the view in; the middle button moves the view whatever the tool is,
-and the right button frames an area for the zoom tool to fill the
+What the primary button does follows the tool the window has put the
+view in; the third button moves the view whatever the tool is, and
+the secondary button frames an area for the zoom tool to fill the
 view with.
 """
 
@@ -40,13 +40,13 @@ _ZOOM_DRAG = 120.0
 _ZOOM_STEP = 2.0
 _ZOOM_LEAST = 0.01
 _ZOOM_MOST = 100.0
-# A frame dragged out with the right button is only worth zooming into
-# once it is more than a few pixels across.
+# A frame dragged out with the secondary button is only worth zooming
+# into once it is more than a few pixels across.
 _FRAME_LEAST = 8
 
 
 class Tool(enum.Enum):
-    """What the left mouse button does in the editing area."""
+    """What the primary button does in the editing area."""
 
     SELECTION = 'selection'
     HAND = 'hand'
@@ -59,16 +59,16 @@ class ROIGraphicsView(QGraphicsView):
     Attributes
     ----------
     tool : Tool
-        What the left mouse button does: leave it to the window, to
+        What the primary button does: leave it to the window, to
         select shapes and move them, take it for moving the view, or
-        take it for zooming the view.  The middle button moves the
+        take it for zooming the view.  The third button moves the
         view whatever this says.
 
     Signals
     -------
     clicked : QPointF
-        Emitted with the position in scene coordinates when the left
-        mouse button is pressed in the selection tool.
+        Emitted with the position in scene coordinates when the
+        primary button is pressed in the selection tool.
     dragged : QPointF
         Emitted with the position in scene coordinates on every move
         of the pointer made while that button is held, so that the
@@ -94,7 +94,7 @@ class ROIGraphicsView(QGraphicsView):
     zoom_requested : float
         Emitted with the scale a drag of the zoom tool asks for.
     zoom_area_requested : QRectF
-        Emitted with the area of the scene the right button framed,
+        Emitted with the area of the scene the secondary button framed,
         which the view is to be filled with.
     """
 
@@ -131,12 +131,12 @@ class ROIGraphicsView(QGraphicsView):
         """
         if not self._following():
             if event.button() == Qt.MouseButton.MiddleButton:
-                # The middle button moves the view whatever the tool
+                # The third button moves the view whatever the tool
                 # is, which is how a shape is drawn over a part of the
                 # image that is not on the screen yet.
                 self._begin_pan(event.position().to_point())
             elif event.button() == Qt.MouseButton.LeftButton:
-                self._begin_left(event)
+                self._begin_primary(event)
             elif (event.button() == Qt.MouseButton.RightButton
                     and self.tool is Tool.ZOOM):
                 self._begin_frame(event.position().to_point())
@@ -196,8 +196,8 @@ class ROIGraphicsView(QGraphicsView):
                 or self._frame_origin is not None
                 or self._dragging)
 
-    def _begin_left(self, event: QMouseEvent) -> None:
-        """Begin what the tool does with the left button."""
+    def _begin_primary(self, event: QMouseEvent) -> None:
+        """Begin what the tool does with the primary button."""
         if self.tool is Tool.HAND:
             self._begin_pan(event.position().to_point())
             return
@@ -261,7 +261,7 @@ class ROIGraphicsView(QGraphicsView):
         self.zoom_requested.emit(min(max(ratio, _ZOOM_LEAST), _ZOOM_MOST))
 
     def _begin_frame(self, point: QPoint) -> None:
-        """Begin the area the right button frames."""
+        """Begin the area the secondary button frames."""
         self._frame_origin = point
         self._show_frame(QRect(point, point))
 
