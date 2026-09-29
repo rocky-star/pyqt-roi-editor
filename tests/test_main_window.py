@@ -205,6 +205,35 @@ def capture_about(monkeypatch) -> list[str]:
     return shown
 
 
+def about_body(version: str) -> str:
+    """Return the text the about box shows for `version`.
+
+    Besides the name and the version, the box carries the copyright
+    notice, the licence and the notice the GPL asks a program to
+    show.
+    """
+    return (
+        f"<p>{APPLICATION_NAME}, version {version}</p>"
+        "<p>A simple ROI editor written in PySide6.</p>"
+        "<p>Copyright (C) 2026 Rocky☆Star "
+        "&lt;rocky-star22@outlook.com&gt;</p>"
+        "<p>Licence: GNU General Public License, version 3 or later</p>"
+        "<p>This program is free software: you can redistribute it "
+        "and/or modify it under the terms of the GNU General Public "
+        "License as published by the Free Software Foundation, either "
+        "version 3 of the License, or (at your option) any later "
+        "version.</p>"
+        "<p>This program is distributed in the hope that it will be "
+        "useful, but WITHOUT ANY WARRANTY; without even the implied "
+        "warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR "
+        "PURPOSE.  See the GNU General Public License for more "
+        "details.</p>"
+        "<p>You should have received a copy of the GNU General Public "
+        "License along with this program.  If not, see "
+        "<a href=\"https://www.gnu.org/licenses/\">"
+        "https://www.gnu.org/licenses/</a>.</p>")
+
+
 def capture_titles(monkeypatch) -> list[str]:
     """Record the title every common dialog is given, and cancel it."""
     titles: list[str] = []
@@ -926,23 +955,17 @@ def test_the_about_action_is_named_after_the_application(window) -> None:
 def test_the_about_box_shows_the_application_version(
         window, monkeypatch) -> None:
     QCoreApplication.application_version = '3.2.1'
-    body = (
-        "<p>ROI Editor, version 3.2.1</p>"
-        "<p>A simple ROI editor written in PySide6.</p>")
     shown = capture_about(monkeypatch)
     window.ui.action_about.trigger()
-    assert shown == [body]
+    assert shown == [about_body('3.2.1')]
 
 
 def test_the_about_box_names_a_version_it_does_not_have(
         window, monkeypatch) -> None:
     QCoreApplication.application_version = ''
-    body = (
-        "<p>ROI Editor, version (unspecified version)</p>"
-        "<p>A simple ROI editor written in PySide6.</p>")
     shown = capture_about(monkeypatch)
     window.ui.action_about.trigger()
-    assert shown == [body]
+    assert shown == [about_body("(unspecified version)")]
 
 
 def test_a_missing_distribution_has_no_version(monkeypatch) -> None:

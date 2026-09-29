@@ -70,168 +70,168 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../main.py" line="240"/>
+        <location filename="../main.py" line="250"/>
         <source>Basemaps</source>
         <translation>底图</translation>
     </message>
     <message>
-        <location filename="../main.py" line="264"/>
+        <location filename="../main.py" line="274"/>
         <source>Shapes</source>
         <translation>形状</translation>
     </message>
     <message>
-        <location filename="../main.py" line="404"/>
+        <location filename="../main.py" line="414"/>
         <source>Name</source>
         <translation>名称</translation>
     </message>
     <message>
-        <location filename="../main.py" line="404"/>
+        <location filename="../main.py" line="414"/>
         <source>X</source>
         <translation>X</translation>
     </message>
     <message>
-        <location filename="../main.py" line="404"/>
+        <location filename="../main.py" line="414"/>
         <source>Y</source>
         <translation>Y</translation>
     </message>
     <message>
-        <location filename="../main.py" line="412"/>
+        <location filename="../main.py" line="422"/>
         <source>Vertex %1</source>
         <translation>顶点 %1</translation>
     </message>
     <message>
-        <location filename="../main.py" line="530"/>
+        <location filename="../main.py" line="540"/>
         <source>%1 - %2</source>
         <translation>%1 - %2</translation>
     </message>
     <message>
-        <location filename="../main.py" line="727"/>
+        <location filename="../main.py" line="737"/>
         <source>Drag to move the view.</source>
         <translation>拖动以移动视图。</translation>
     </message>
     <message>
-        <location filename="../main.py" line="730"/>
+        <location filename="../main.py" line="740"/>
         <source>Drag left to zoom out and right to zoom in; drag a box with the secondary button to fill the view with it.</source>
         <translation>向左拖动以缩小，向右拖动以放大；用次要按钮拖出一个方框即可用它填满视图。</translation>
     </message>
     <message>
-        <location filename="../main.py" line="734"/>
+        <location filename="../main.py" line="744"/>
         <source>Click a shape to select it; drag it or a handle to move it.</source>
         <translation>单击形状即可选中；拖动形状或控制柄即可移动它。</translation>
     </message>
     <message>
-        <location filename="../main.py" line="949"/>
+        <location filename="../main.py" line="959"/>
         <source>Click or type both endpoints; Esc cancels.</source>
         <translation>单击或输入两个端点；按 Esc 取消。</translation>
     </message>
     <message>
-        <location filename="../main.py" line="952"/>
+        <location filename="../main.py" line="962"/>
         <source>Click or type digits; Enter finishes, Esc cancels.</source>
         <translation>单击或输入数字；按 Enter 完成，按 Esc 取消。</translation>
     </message>
     <message>
-        <location filename="../main.py" line="962"/>
+        <location filename="../main.py" line="972"/>
         <source>Click or type a coordinate; Esc stops.</source>
         <translation>单击或输入坐标；按 Esc 停止。</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1115"/>
+        <location filename="../main.py" line="1125"/>
         <source>%1 needs at least %2 vertices.</source>
         <translation>%1 至少需要 %2 个顶点。</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1285"/>
+        <location filename="../main.py" line="1295"/>
         <source>Remove shape %1?</source>
         <translation>移除形状 %1？</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1318"/>
+        <location filename="../main.py" line="1328"/>
         <source>Shape %1</source>
         <translation>形状 %1</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1344"/>
+        <location filename="../main.py" line="1354"/>
         <source>Add Basemap</source>
         <translation>添加底图</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1346"/>
+        <location filename="../main.py" line="1356"/>
         <source>Image Files (%1)</source>
         <translation>图像文件 (%1)</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1353"/>
+        <location filename="../main.py" line="1363"/>
         <source>Cannot load %1</source>
         <translation>无法加载 %1</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1385"/>
+        <location filename="../main.py" line="1395"/>
         <source>Remove basemap %1?</source>
         <translation>移除底图 %1？</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1401"/>
+        <location filename="../main.py" line="1411"/>
         <source>Rename Basemap</source>
         <translation>重命名底图</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1401"/>
+        <location filename="../main.py" line="1411"/>
         <source>&amp;Name:</source>
         <translation>名称(&amp;N):</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1439"/>
+        <location filename="../main.py" line="1449"/>
         <source>Untitled</source>
         <translation>未命名</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1453"/>
+        <location filename="../main.py" line="1463"/>
         <source>Open</source>
         <translation>打开</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1455"/>
-        <location filename="../main.py" line="1521"/>
+        <location filename="../main.py" line="1465"/>
+        <location filename="../main.py" line="1531"/>
         <source>ROI Files (%1)</source>
         <translation>ROI 文件 (%1)</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1485"/>
+        <location filename="../main.py" line="1495"/>
         <source>Cannot open %1: %2</source>
         <translation>无法打开 %1：%2</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1518"/>
+        <location filename="../main.py" line="1528"/>
         <source>Save As</source>
         <translation>另存为</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1552"/>
+        <location filename="../main.py" line="1562"/>
         <source>Cannot save %1: %2</source>
         <translation>无法保存 %1：%2</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1558"/>
+        <location filename="../main.py" line="1568"/>
         <source>Saved %1</source>
         <translation>已保存 %1</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1567"/>
+        <location filename="../main.py" line="1577"/>
         <source>Discard the current document?</source>
         <translation>放弃当前文档？</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1577"/>
+        <location filename="../main.py" line="1587"/>
         <source>(unspecified version)</source>
         <translation>（未指定版本）</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1579"/>
-        <source>&lt;p&gt;%1, version %2&lt;/p&gt;&lt;p&gt;A simple ROI editor written in PySide6.&lt;/p&gt;</source>
-        <translation>&lt;p&gt;%1，版本 %2&lt;/p&gt;&lt;p&gt;一个用 PySide6 编写的简易 ROI 编辑器。&lt;/p&gt;</translation>
+        <location filename="../main.py" line="1589"/>
+        <source>&lt;p&gt;%1, version %2&lt;/p&gt;&lt;p&gt;A simple ROI editor written in PySide6.&lt;/p&gt;&lt;p&gt;Copyright (C) 2026 Rocky☆Star &amp;lt;rocky-star22@outlook.com&amp;gt;&lt;/p&gt;&lt;p&gt;Licence: GNU General Public License, version 3 or later&lt;/p&gt;&lt;p&gt;This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.&lt;/p&gt;&lt;p&gt;This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.&lt;/p&gt;&lt;p&gt;You should have received a copy of the GNU General Public License along with this program.  If not, see &lt;a href=&quot;https://www.gnu.org/licenses/&quot;&gt;https://www.gnu.org/licenses/&lt;/a&gt;.&lt;/p&gt;</source>
+        <translation>&lt;p&gt;%1，版本 %2&lt;/p&gt;&lt;p&gt;一个用 PySide6 编写的简易 ROI 编辑器。&lt;/p&gt;&lt;p&gt;版权所有 (C) 2026 Rocky☆Star &amp;lt;rocky-star22@outlook.com&amp;gt;&lt;/p&gt;&lt;p&gt;许可证：GNU 通用公共许可证第 3 版或更高版本&lt;/p&gt;&lt;p&gt;本程序是自由软件：你可以按自由软件基金会发布的 GNU 通用公共许可证的条款重新发布或修改本程序，可以使用许可证的第 3 版，或（由你选择）任何更高版本。&lt;/p&gt;&lt;p&gt;本程序的发布是希望它有用，但不提供任何担保，甚至不提供适销性或特定用途适用性的默示担保。详见 GNU 通用公共许可证。&lt;/p&gt;&lt;p&gt;你应该已经随本程序收到 GNU 通用公共许可证的副本。如果没有，请见 &lt;a href=&quot;https://www.gnu.org/licenses/&quot;&gt;https://www.gnu.org/licenses/&lt;/a&gt;。&lt;/p&gt;</translation>
     </message>
     <message>
-        <location filename="../main.py" line="1582"/>
+        <location filename="../main.py" line="1609"/>
         <source>About %1</source>
         <translation>关于 %1</translation>
     </message>

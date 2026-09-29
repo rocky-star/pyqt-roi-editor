@@ -1580,14 +1580,31 @@ class MainWindow(QMainWindow):
     # Help
 
     def _show_about(self) -> None:
-        """Show the about box, with the application name and version."""
+        """Show the about box, with the copyright and licence notice."""
         app_name = QCoreApplication.application_name
         version = (
             QCoreApplication.application_version
             or self.__tr("(unspecified version)"))
         text = self.__tr(
             "<p>%1, version %2</p>"
-            + "<p>A simple ROI editor written in PySide6.</p>")
+            + "<p>A simple ROI editor written in PySide6.</p>"
+            + "<p>Copyright (C) 2026 Rocky☆Star "
+            + "&lt;rocky-star22@outlook.com&gt;</p>"
+            + "<p>Licence: GNU General Public License, version 3 or later</p>"
+            + "<p>This program is free software: you can redistribute it "
+            + "and/or modify it under the terms of the GNU General Public "
+            + "License as published by the Free Software Foundation, "
+            + "either version 3 of the License, or (at your option) any "
+            + "later version.</p>"
+            + "<p>This program is distributed in the hope that it will be "
+            + "useful, but WITHOUT ANY WARRANTY; without even the implied "
+            + "warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR "
+            + "PURPOSE.  See the GNU General Public License for more "
+            + "details.</p>"
+            + "<p>You should have received a copy of the GNU General "
+            + "Public License along with this program.  If not, see "
+            + "<a href=\"https://www.gnu.org/licenses/\">"
+            + "https://www.gnu.org/licenses/</a>.</p>")
         QMessageBox.about(
             self, qformat(self.__tr("About %1"), [app_name]),
             qformat(text, [app_name, version]))
